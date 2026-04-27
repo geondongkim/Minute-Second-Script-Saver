@@ -272,6 +272,14 @@ async function loadAiSettings() {
   document.getElementById('openaiApiKeys').value   = (c.openaiApiKeys || []).join(', ');
   document.getElementById('openaiModel').value     = c.openaiModel || 'gpt-5.4-mini';
   updateProviderSections(c.provider || 'gemini');
+
+  const { popup_ai_result: saved = '' } = await chrome.storage.local.get('popup_ai_result');
+  if (saved) {
+    lastAiResult = saved;
+    const resultEl = document.getElementById('aiResult');
+    resultEl.className = 'ai-result';
+    resultEl.textContent = saved;
+  }
 }
 
 function updateProviderSections(provider) {
@@ -351,6 +359,7 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
     const result = await callAiApi(config, fullPrompt);
 
     lastAiResult = result;
+    chrome.storage.local.set({ popup_ai_result: result });
     resultEl.className = 'ai-result';
     resultEl.textContent = result;
     setFeedback('ai', '✅ 요약 완료');

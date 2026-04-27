@@ -61,6 +61,12 @@ async function init() {
 
   if (captionsToView.length) renderAll(captionsToView);
   await loadAiConfig();
+
+  const savedAi = sessionStorage.getItem('viewer_ai_result');
+  if (savedAi) {
+    lastAiResult = savedAi;
+    renderSummary(savedAi);
+  }
 }
 
 // ============================================================
@@ -534,6 +540,7 @@ ${'─'.repeat(36)}`;
 
     const result = await callAiApi(config, fullPrompt);
     lastAiResult = result;
+    sessionStorage.setItem('viewer_ai_result', result);
     renderSummary(result);
     setAiFeedback('✅ 요약 완료');
 
