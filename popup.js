@@ -83,6 +83,8 @@ function showIdle(msg) {
   document.getElementById('statusDot').classList.remove('active');
   if (msg) idleEl.innerHTML = msg.replace(/\n/g, '<br>');
   clearInterval(elapsedTimer);
+  elapsedTimer = null;
+  captureStartTime = null;
 }
 
 function showCapture(status) {
@@ -94,13 +96,15 @@ function showCapture(status) {
   document.getElementById('captionCount').textContent = (status.captionCount ?? 0).toLocaleString();
   document.getElementById('attendeeCount').textContent = (status.attendeeCount ?? 0).toString();
 
-  captureStartTime = status.startTime ? new Date(status.startTime) : new Date();
+  captureStartTime = status.startTime ? new Date(status.startTime) : captureStartTime ?? new Date();
   updateElapsed();
-  clearInterval(elapsedTimer);
-  elapsedTimer = setInterval(updateElapsed, 30000);
+  if (!elapsedTimer) {
+    elapsedTimer = setInterval(updateElapsed, 30000);
+  }
 
-  const autoSaveOn = status.autoSaveEnabled !== false;
-  document.getElementById('autoSaveToggle').checked = autoSaveOn;
+  if (status.autoSaveEnabled !== undefined) {
+    document.getElementById('autoSaveToggle').checked = status.autoSaveEnabled !== false;
+  }
 }
 
 function updateElapsed() {

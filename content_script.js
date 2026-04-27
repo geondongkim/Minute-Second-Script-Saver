@@ -313,10 +313,13 @@ function processCaptions() {
   if (changed) {
     // 팝업이 열려 있다면 카운트 업데이트
     notifyPopup({
-      type:         'STATUS_UPDATE',
+      type:          'STATUS_UPDATE',
       isCapturing,
       meetingTitle,
-      captionCount: transcriptArray.length,
+      captionCount:  transcriptArray.length,
+      startTime:     sessionStartTime?.toISOString(),
+      attendeeCount: new Set(transcriptArray.map(e => e.name)).size,
+      autoSaveEnabled,
     });
 
     // 세션 스토리지 스냅샷 (팝업 열 때 복원용)
