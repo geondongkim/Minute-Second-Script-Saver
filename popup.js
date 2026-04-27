@@ -263,9 +263,9 @@ async function loadAiSettings() {
   const c = s.aiConfig || {};
   document.getElementById('aiProviderSelect').value = c.provider || 'gemini';
   document.getElementById('geminiApiKeys').value   = (c.geminiApiKeys || []).join(', ');
-  document.getElementById('geminiModel').value     = c.geminiModel || 'gemini-2.5-flash-preview-04-17';
+  document.getElementById('geminiModel').value     = c.geminiModel || 'gemini-2.5-flash';
   document.getElementById('openaiApiKeys').value   = (c.openaiApiKeys || []).join(', ');
-  document.getElementById('openaiModel').value     = c.openaiModel || 'gpt-4o-mini';
+  document.getElementById('openaiModel').value     = c.openaiModel || 'gpt-4.1-mini';
   updateProviderSections(c.provider || 'gemini');
 }
 
@@ -366,7 +366,7 @@ async function callAiApi(config, prompt) {
     if (!keys?.length) throw new Error('Gemini API 키를 입력하세요.');
     // 키 로테이션 (랜덤 선택)
     const apiKey = keys[Math.floor(Math.random() * keys.length)];
-    const model  = config.geminiModel || 'gemini-2.5-flash-preview-04-17';
+    const model  = config.geminiModel || 'gemini-2.5-flash';
     const url    = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const resp   = await fetch(url, {
       method:  'POST',
@@ -381,7 +381,7 @@ async function callAiApi(config, prompt) {
     const keys = config.openaiApiKeys;
     if (!keys?.length) throw new Error('OpenAI API 키를 입력하세요.');
     const apiKey = keys[Math.floor(Math.random() * keys.length)];
-    const model  = config.openaiModel || 'gpt-4o-mini';
+    const model  = config.openaiModel || 'gpt-4.1-mini';
     const resp   = await fetch('https://api.openai.com/v1/chat/completions', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },

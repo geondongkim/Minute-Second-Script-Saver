@@ -356,10 +356,11 @@
         <div class="form-row">
           <label>🤖 Gemini 모델</label>
           <select id="geminiModel">
-            <option value="gemini-2.5-flash-preview-04-17">Gemini 2.5 Flash (권장)</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (최고 성능)</option>
+            <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (권장)</option>
+            <option value="gemini-2.5-flash-preview-04-17">Gemini 2.5 Flash Preview</option>
             <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite (경량)</option>
           </select>
         </div>
       </div>
@@ -373,10 +374,13 @@
         <div class="form-row">
           <label>🤖 OpenAI 모델</label>
           <select id="openaiModel">
-            <option value="gpt-4o-mini">GPT-4o mini (권장)</option>
+            <option value="gpt-4.1">GPT-4.1 (최고 성능)</option>
+            <option value="gpt-4.1-mini" selected>GPT-4.1 mini (권장)</option>
+            <option value="gpt-4.1-nano">GPT-4.1 nano (경량)</option>
             <option value="gpt-4o">GPT-4o</option>
-            <option value="gpt-4-turbo">GPT-4 Turbo</option>
-            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="o4-mini">o4-mini (추론)</option>
+            <option value="o3-mini">o3-mini (추론)</option>
           </select>
         </div>
       </div>
