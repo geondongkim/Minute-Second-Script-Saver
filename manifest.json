@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Teams Captions Saver KR",
-  "version": "1.0.0",
-  "description": "팀즈 회의 라이브 자막을 시간 단위 파일로 자동 저장합니다.",
+  "version": "2.0.0",
+  "description": "팀즈 회의 라이브 자막을 자동 캡처·저장하고, AI로 요약합니다.",
 
   "icons": {
     "16": "icon.png",
@@ -19,7 +19,9 @@
   "host_permissions": [
     "https://teams.microsoft.com/*",
     "https://teams.cloud.microsoft/*",
-    "https://teams.live.com/*"
+    "https://teams.live.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*"
   ],
 
   "action": {
@@ -41,6 +43,13 @@
       ],
       "js": ["content_script.js"],
       "run_at": "document_idle"
+    }
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": ["viewer.html"],
+      "matches": ["<all_urls>"]
     }
   ],
 

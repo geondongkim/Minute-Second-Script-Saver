@@ -9,10 +9,11 @@
 
     body {
       font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
-      width: 300px;
+      width: 340px;
       background: #1e1e2e;
       color: #cdd6f4;
       padding: 0;
+      min-height: 460px;
     }
 
     /* ── 헤더 ── */
@@ -20,197 +21,185 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 14px 16px 10px;
+      padding: 12px 16px 10px;
       border-bottom: 1px solid #313244;
     }
-    .header-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #cba6f7;
-      flex: 1;
-    }
+    .header-title { font-size: 13px; font-weight: 600; color: #cba6f7; flex: 1; }
     .status-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      background: #45475a;
-      flex-shrink: 0;
-      transition: background 0.3s;
+      width: 9px; height: 9px; border-radius: 50%;
+      background: #45475a; flex-shrink: 0; transition: background 0.3s;
     }
     .status-dot.active {
       background: #a6e3a1;
       box-shadow: 0 0 6px #a6e3a1aa;
       animation: pulse 2.5s infinite;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: 0.45; }
-    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
 
-    /* ── 본문 ── */
-    .body { padding: 14px 16px; }
-
-    /* 회의 중이 아닐 때 */
-    .idle-state {
-      text-align: center;
-      padding: 24px 0 16px;
-      color: #6c7086;
-      font-size: 12px;
-      line-height: 1.8;
+    /* ── 탭 바 ── */
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid #313244;
+      background: #181825;
     }
-    .idle-state .hint {
-      margin-top: 8px;
+    .tab {
+      flex: 1;
+      padding: 9px 4px;
+      background: none;
+      border: none;
+      cursor: pointer;
       font-size: 11px;
-      color: #45475a;
+      font-weight: 500;
+      color: #6c7086;
+      font-family: inherit;
+      transition: color .15s, border-bottom .15s;
+      border-bottom: 2px solid transparent;
     }
+    .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+    .tab:hover:not(.active) { color: #cdd6f4; }
 
-    /* 캡처 중 */
-    .capture-state { display: none; }
+    /* ── 탭 콘텐츠 ── */
+    .tab-content { display: none; padding: 14px 16px; }
+    .tab-content.active { display: block; }
+
+    /* ── 캡처 탭 ── */
+    .idle-state {
+      text-align: center; padding: 22px 0 14px;
+      color: #6c7086; font-size: 12px; line-height: 1.8;
+    }
+    .idle-state .hint { margin-top: 8px; font-size: 11px; color: #45475a; }
+
+    .capture-inner { display: none; }
 
     .meeting-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: #f5c2e7;
-      background: #313244;
-      border-radius: 8px;
-      padding: 8px 12px;
-      margin-bottom: 14px;
-      min-height: 36px;
-      word-break: break-all;
-      line-height: 1.4;
+      font-size: 13px; font-weight: 600; color: #f5c2e7;
+      background: #313244; border-radius: 8px; padding: 8px 12px;
+      margin-bottom: 12px; min-height: 34px; word-break: break-all; line-height: 1.4;
     }
-
     .stats-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 14px;
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 7px; margin-bottom: 12px;
     }
-    .stat {
-      background: #313244;
-      border-radius: 8px;
-      padding: 10px 8px;
-      text-align: center;
-    }
-    .stat .value {
-      font-size: 20px;
-      font-weight: 700;
-      color: #89dceb;
-      line-height: 1;
-    }
-    .stat .label {
-      font-size: 9px;
-      color: #6c7086;
-      margin-top: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
+    .stat { background: #313244; border-radius: 8px; padding: 9px 6px; text-align: center; }
+    .stat .value { font-size: 18px; font-weight: 700; color: #89dceb; line-height: 1; }
+    .stat .label { font-size: 9px; color: #6c7086; margin-top: 3px; text-transform: uppercase; letter-spacing:.04em; }
 
     .save-path {
-      font-size: 11px;
-      color: #6c7086;
-      margin-bottom: 14px;
-      padding: 6px 10px;
-      background: #181825;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      gap: 4px;
+      font-size: 11px; color: #6c7086; margin-bottom: 12px;
+      padding: 5px 9px; background: #181825; border-radius: 6px;
+      display: flex; align-items: center; gap: 4px;
     }
-    .save-path .path-value {
-      color: #cba6f7;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+    .save-path .path-value { color: #cba6f7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── 버튼 ── */
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
+    .btn-row { display: flex; gap: 7px; margin-bottom: 10px; }
     .btn {
-      flex: 1;
-      padding: 9px 6px;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-      transition: opacity 0.15s, transform 0.1s;
-      font-family: inherit;
+      flex: 1; padding: 8px 6px; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 12px; font-weight: 600;
+      transition: opacity .15s, transform .1s; font-family: inherit;
     }
-    .btn:active { transform: scale(0.97); }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-primary  { background: #cba6f7; color: #1e1e2e; }
-    .btn-secondary{ background: #313244; color: #cdd6f4; }
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary   { background: #cba6f7; color: #1e1e2e; }
+    .btn-secondary { background: #313244; color: #cdd6f4; }
+    .btn-accent    { background: #89b4fa; color: #1e1e2e; }
+    .btn-green     { background: #a6e3a1; color: #1e1e2e; }
+    .btn-full { width: 100%; margin-bottom: 8px; }
 
-    .btn-settings {
-      width: 100%;
-      padding: 7px;
-      background: transparent;
-      border: 1px solid #313244;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 11px;
-      color: #6c7086;
-      font-family: inherit;
-      transition: border-color 0.15s, color 0.15s;
+    /* ── 토글 ── */
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px; padding: 0 2px;
     }
-    .btn-settings:hover { border-color: #cba6f7; color: #cba6f7; }
-
-    /* ── 피드백 ── */
-    .feedback {
-      font-size: 11px;
-      text-align: center;
-      min-height: 18px;
-      margin-top: 8px;
-      color: #a6e3a1;
-    }
-    .feedback.error { color: #f38ba8; }
-
-    /* ── 자동저장 토글 ── */
-    .autosave-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-      padding: 0 2px;
-    }
-    .autosave-label {
-      font-size: 12px;
-      color: #cdd6f4;
-    }
-    .toggle {
-      position: relative;
-      display: inline-block;
-      width: 40px;
-      height: 22px;
-      flex-shrink: 0;
-    }
+    .toggle-label { font-size: 12px; color: #cdd6f4; }
+    .toggle { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
     .toggle input { opacity: 0; width: 0; height: 0; }
     .toggle-slider {
-      position: absolute;
-      inset: 0;
-      background: #45475a;
-      border-radius: 11px;
-      cursor: pointer;
-      transition: background 0.2s;
+      position: absolute; inset: 0; background: #45475a;
+      border-radius: 11px; cursor: pointer; transition: background .2s;
     }
     .toggle-slider::before {
-      content: '';
-      position: absolute;
-      width: 16px;
-      height: 16px;
-      left: 3px;
-      top: 3px;
-      background: #cdd6f4;
-      border-radius: 50%;
-      transition: transform 0.2s;
+      content: ''; position: absolute; width: 16px; height: 16px;
+      left: 3px; top: 3px; background: #cdd6f4;
+      border-radius: 50%; transition: transform .2s;
     }
     .toggle input:checked + .toggle-slider { background: #a6e3a1; }
     .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+
+    /* ── 설정 탭 ── */
+    .section-title { font-size: 10px; font-weight: 700; color: #6c7086; text-transform: uppercase; letter-spacing:.08em; margin-bottom: 8px; margin-top: 12px; }
+    .section-title:first-child { margin-top: 0; }
+    .form-row { margin-bottom: 9px; }
+    .form-row label { display: block; font-size: 11px; color: #6c7086; margin-bottom: 4px; }
+    .form-row input, .form-row select, .form-row textarea {
+      width: 100%; padding: 7px 10px; background: #313244;
+      border: 1px solid #45475a; border-radius: 7px; color: #cdd6f4;
+      font-size: 12px; font-family: inherit; outline: none; resize: vertical;
+    }
+    .form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+      border-color: #cba6f7;
+    }
+    .form-row select option { background: #313244; }
+
+    .alias-list { list-style: none; margin-bottom: 8px; }
+    .alias-item {
+      display: flex; gap: 5px; align-items: center; margin-bottom: 5px;
+    }
+    .alias-item input { flex: 1; }
+    .alias-item .btn-del {
+      flex-shrink: 0; padding: 5px 8px; background: #f38ba8;
+      color: #1e1e2e; border: none; border-radius: 6px;
+      cursor: pointer; font-size: 12px; font-family: inherit;
+    }
+    .alias-add-row { display: flex; gap: 5px; margin-bottom: 10px; }
+    .alias-add-row input { flex: 1; }
+    .alias-add-row .btn-add {
+      padding: 6px 10px; background: #a6e3a1; color: #1e1e2e;
+      border: none; border-radius: 6px; cursor: pointer; font-size: 12px; font-family: inherit;
+    }
+
+    /* ── AI 탭 ── */
+    .provider-sections > div { display: none; }
+    .provider-sections > div.active { display: block; }
+
+    .ai-result {
+      margin-top: 10px;
+      padding: 9px 10px;
+      background: #181825;
+      border: 1px solid #313244;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.6;
+      min-height: 80px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #cdd6f4;
+    }
+    .ai-result.placeholder { color: #45475a; }
+
+    /* ── 히스토리 탭 ── */
+    .history-list { list-style: none; }
+    .history-item {
+      padding: 10px 12px;
+      background: #313244;
+      border-radius: 8px;
+      margin-bottom: 7px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .history-item:hover { background: #45475a; }
+    .history-item .h-title { font-size: 12px; font-weight: 600; color: #cba6f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history-item .h-meta { font-size: 10px; color: #6c7086; margin-top: 3px; }
+    .history-empty { text-align: center; color: #45475a; font-size: 12px; padding: 28px 0; }
+
+    /* ── 피드백 / 공통 ── */
+    .feedback { font-size: 11px; text-align: center; min-height: 18px; margin-top: 8px; color: #a6e3a1; }
+    .feedback.error { color: #f38ba8; }
+    .divider { border: none; border-top: 1px solid #313244; margin: 12px 0; }
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #cba6f7; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -221,21 +210,30 @@
     <span class="header-title">Teams Captions Saver KR</span>
   </div>
 
-  <!-- 본문 -->
-  <div class="body">
+  <!-- 탭 바 -->
+  <div class="tab-bar">
+    <button class="tab active" data-tab="capture">캡처</button>
+    <button class="tab" data-tab="settings">설정</button>
+    <button class="tab" data-tab="ai">AI요약</button>
+    <button class="tab" data-tab="history">히스토리</button>
+  </div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- TAB 1: 캡처                            -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="tab-content active" id="tab-capture">
 
     <!-- 회의 중이 아님 -->
     <div class="idle-state" id="idleState">
       회의 중이 아니거나<br>자막이 켜져 있지 않습니다.
       <div class="hint">
-        teams.microsoft.com 에서 회의 참여 후<br>
+        Teams에서 회의 참여 후<br>
         <b>... → 라이브 캡션 켜기</b>
       </div>
     </div>
 
     <!-- 캡처 중 -->
-    <div class="capture-state" id="captureState">
-
+    <div class="capture-inner" id="captureState">
       <div class="meeting-name" id="meetingName">—</div>
 
       <div class="stats-row">
@@ -248,33 +246,186 @@
           <div class="label">경과</div>
         </div>
         <div class="stat">
-          <div class="value" id="nextSave">—</div>
-          <div class="label">다음저장</div>
+          <div class="value" id="attendeeCount">0</div>
+          <div class="label">참석자</div>
         </div>
       </div>
 
       <div class="save-path">
-        📁&nbsp;<span class="path-value" id="savePath">다운로드/teams-captions/회의명/</span>
+        📁&nbsp;<span class="path-value" id="savePath">다운로드/teams-captions/</span>
       </div>
 
       <div class="btn-row">
         <button class="btn btn-primary"   id="saveNowBtn">지금 저장</button>
-        <button class="btn btn-secondary" id="openFolderBtn">폴더 열기</button>
+        <button class="btn btn-accent"    id="viewerBtn">뷰어 열기</button>
       </div>
 
-      <div class="autosave-row">
-        <span class="autosave-label">⏱ 자동저장 (5분마다)</span>
+      <div class="toggle-row">
+        <span class="toggle-label">⏱ 자동저장 (5분)</span>
         <label class="toggle">
           <input type="checkbox" id="autoSaveToggle" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>
 
-      <button class="btn-settings" id="settingsBtn">⚙ 저장 폴더 변경</button>
-
       <div class="feedback" id="feedback"></div>
     </div>
 
+  </div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- TAB 2: 설정                            -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="tab-content" id="tab-settings">
+
+    <div class="section-title">기능</div>
+
+    <div class="toggle-row">
+      <span class="toggle-label">⚡ 자막 자동 켜기</span>
+      <label class="toggle">
+        <input type="checkbox" id="autoEnableCaptionsToggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">💾 회의 종료 시 자동 저장</span>
+      <label class="toggle">
+        <input type="checkbox" id="autoSaveOnEndToggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <span class="toggle-label">👥 참석자 추적</span>
+      <label class="toggle">
+        <input type="checkbox" id="trackAttendeesToggle">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <hr class="divider">
+    <div class="section-title">저장</div>
+
+    <div class="form-row">
+      <label>저장 포맷</label>
+      <select id="saveFormatSelect">
+        <option value="md">Markdown (.md)</option>
+        <option value="txt">텍스트 (.txt)</option>
+        <option value="json">JSON (.json)</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>저장 폴더 (다운로드 하위)</label>
+      <input type="text" id="subfolderInput" placeholder="teams-captions">
+    </div>
+
+    <hr class="divider">
+    <div class="section-title">발화자 별칭</div>
+
+    <ul class="alias-list" id="aliasList"></ul>
+    <div class="alias-add-row">
+      <input type="text" id="aliasOrigInput" placeholder="원래 이름">
+      <input type="text" id="aliasNewInput"  placeholder="별칭">
+      <button class="btn-add" id="aliasAddBtn">추가</button>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="settingsSaveBtn">설정 저장</button>
+    <div class="feedback" id="settingsFeedback"></div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- TAB 3: AI 요약                         -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="tab-content" id="tab-ai">
+
+    <div class="form-row">
+      <label>AI 제공자</label>
+      <select id="aiProviderSelect">
+        <option value="gemini">Gemini (Google)</option>
+        <option value="openai">OpenAI (ChatGPT)</option>
+      </select>
+    </div>
+
+    <!-- Gemini 설정 -->
+    <div class="provider-sections">
+      <div id="geminiSection" class="active">
+        <div class="form-row">
+          <label>🔑 Gemini API Key (콤마로 구분, 다중 키 권장)</label>
+          <textarea id="geminiApiKeys" rows="2" placeholder="AIzaSy..., AIzaSy..."></textarea>
+        </div>
+        <div class="form-row">
+          <label>🤖 Gemini 모델</label>
+          <select id="geminiModel">
+            <option value="gemini-2.5-flash-preview-04-17">Gemini 2.5 Flash (권장)</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- OpenAI 설정 -->
+      <div id="openaiSection">
+        <div class="form-row">
+          <label>🔑 OpenAI API Key (콤마로 구분, 다중 키 권장)</label>
+          <textarea id="openaiApiKeys" rows="2" placeholder="sk-proj-..., sk-proj-..."></textarea>
+        </div>
+        <div class="form-row">
+          <label>🤖 OpenAI 모델</label>
+          <select id="openaiModel">
+            <option value="gpt-4o-mini">GPT-4o mini (권장)</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+            <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label>회의 유형</label>
+      <select id="meetingTypeSelect">
+        <option value="general">일반 회의</option>
+        <option value="standup">스탠드업 / 데일리</option>
+        <option value="retro">회고 (Retrospective)</option>
+        <option value="planning">플래닝</option>
+        <option value="executive">경영진 회의</option>
+        <option value="interview">인터뷰</option>
+        <option value="brainstorm">브레인스토밍</option>
+        <option value="review">리뷰 (코드/디자인)</option>
+        <option value="1on1">1:1 미팅</option>
+        <option value="custom">커스텀 (직접 입력)</option>
+      </select>
+    </div>
+
+    <div class="form-row" id="customPromptRow" style="display:none">
+      <label>커스텀 프롬프트</label>
+      <textarea id="customPromptInput" rows="3" placeholder="회의 내용을 요약해주세요..."></textarea>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="aiSummarizeBtn" style="flex:2">AI 요약 생성</button>
+      <button class="btn btn-secondary" id="aiSaveKeyBtn" style="flex:1">키 저장</button>
+    </div>
+
+    <div class="ai-result placeholder" id="aiResult">여기에 요약 결과가 표시됩니다.</div>
+
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-secondary" id="aiCopyBtn">📋 복사</button>
+      <button class="btn btn-secondary" id="aiDownloadBtn">💾 저장</button>
+    </div>
+
+    <div class="feedback" id="aiFeedback"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════ -->
+  <!-- TAB 4: 히스토리                        -->
+  <!-- ══════════════════════════════════════ -->
+  <div class="tab-content" id="tab-history">
+    <ul class="history-list" id="historyList">
+      <li class="history-empty">저장된 세션이 없습니다.</li>
+    </ul>
+    <div class="feedback" id="historyFeedback"></div>
   </div>
 
   <script src="popup.js"></script>
