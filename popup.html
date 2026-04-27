@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teams Captions Saver KR</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+      width: 300px;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 0;
+    }
+
+    /* ── 헤더 ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid #313244;
+    }
+    .header-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #cba6f7;
+      flex: 1;
+    }
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #45475a;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .status-dot.active {
+      background: #a6e3a1;
+      box-shadow: 0 0 6px #a6e3a1aa;
+      animation: pulse 2.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.45; }
+    }
+
+    /* ── 본문 ── */
+    .body { padding: 14px 16px; }
+
+    /* 회의 중이 아닐 때 */
+    .idle-state {
+      text-align: center;
+      padding: 24px 0 16px;
+      color: #6c7086;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+    .idle-state .hint {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #45475a;
+    }
+
+    /* 캡처 중 */
+    .capture-state { display: none; }
+
+    .meeting-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #f5c2e7;
+      background: #313244;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      min-height: 36px;
+      word-break: break-all;
+      line-height: 1.4;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .stat {
+      background: #313244;
+      border-radius: 8px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+    .stat .value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #89dceb;
+      line-height: 1;
+    }
+    .stat .label {
+      font-size: 9px;
+      color: #6c7086;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .save-path {
+      font-size: 11px;
+      color: #6c7086;
+      margin-bottom: 14px;
+      padding: 6px 10px;
+      background: #181825;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .save-path .path-value {
+      color: #cba6f7;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ── 버튼 ── */
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .btn {
+      flex: 1;
+      padding: 9px 6px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: opacity 0.15s, transform 0.1s;
+      font-family: inherit;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary  { background: #cba6f7; color: #1e1e2e; }
+    .btn-secondary{ background: #313244; color: #cdd6f4; }
+
+    .btn-settings {
+      width: 100%;
+      padding: 7px;
+      background: transparent;
+      border: 1px solid #313244;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 11px;
+      color: #6c7086;
+      font-family: inherit;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-settings:hover { border-color: #cba6f7; color: #cba6f7; }
+
+    /* ── 피드백 ── */
+    .feedback {
+      font-size: 11px;
+      text-align: center;
+      min-height: 18px;
+      margin-top: 8px;
+      color: #a6e3a1;
+    }
+    .feedback.error { color: #f38ba8; }
+
+    /* ── 자동저장 토글 ── */
+    .autosave-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding: 0 2px;
+    }
+    .autosave-label {
+      font-size: 12px;
+      color: #cdd6f4;
+    }
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: #45475a;
+      border-radius: 11px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      left: 3px;
+      top: 3px;
+      background: #cdd6f4;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: #a6e3a1; }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(18px); }
+  </style>
+</head>
+<body>
+
+  <!-- 헤더 -->
+  <div class="header">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="header-title">Teams Captions Saver KR</span>
+  </div>
+
+  <!-- 본문 -->
+  <div class="body">
+
+    <!-- 회의 중이 아님 -->
+    <div class="idle-state" id="idleState">
+      회의 중이 아니거나<br>자막이 켜져 있지 않습니다.
+      <div class="hint">
+        teams.microsoft.com 에서 회의 참여 후<br>
+        <b>... → 라이브 캡션 켜기</b>
+      </div>
+    </div>
+
+    <!-- 캡처 중 -->
+    <div class="capture-state" id="captureState">
+
+      <div class="meeting-name" id="meetingName">—</div>
+
+      <div class="stats-row">
+        <div class="stat">
+          <div class="value" id="captionCount">0</div>
+          <div class="label">문장</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="elapsedTime">0분</div>
+          <div class="label">경과</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="nextSave">—</div>
+          <div class="label">다음저장</div>
+        </div>
+      </div>
+
+      <div class="save-path">
+        📁&nbsp;<span class="path-value" id="savePath">다운로드/teams-captions/회의명/</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary"   id="saveNowBtn">지금 저장</button>
+        <button class="btn btn-secondary" id="openFolderBtn">폴더 열기</button>
+      </div>
+
+      <div class="autosave-row">
+        <span class="autosave-label">⏱ 자동저장 (5분마다)</span>
+        <label class="toggle">
+          <input type="checkbox" id="autoSaveToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <button class="btn-settings" id="settingsBtn">⚙ 저장 폴더 변경</button>
+
+      <div class="feedback" id="feedback"></div>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
