@@ -265,7 +265,7 @@ async function loadAiSettings() {
   document.getElementById('geminiApiKeys').value   = (c.geminiApiKeys || []).join(', ');
   document.getElementById('geminiModel').value     = c.geminiModel || 'gemini-2.5-flash';
   document.getElementById('openaiApiKeys').value   = (c.openaiApiKeys || []).join(', ');
-  document.getElementById('openaiModel').value     = c.openaiModel || 'gpt-4.1-mini';
+  document.getElementById('openaiModel').value     = c.openaiModel || 'gpt-5.4-mini';
   updateProviderSections(c.provider || 'gemini');
 }
 
@@ -381,7 +381,7 @@ async function callAiApi(config, prompt) {
     const keys = config.openaiApiKeys;
     if (!keys?.length) throw new Error('OpenAI API 키를 입력하세요.');
     const apiKey = keys[Math.floor(Math.random() * keys.length)];
-    const model  = config.openaiModel || 'gpt-4.1-mini';
+    const model  = config.openaiModel || 'gpt-5.4-mini';
     const resp   = await fetch('https://api.openai.com/v1/chat/completions', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
