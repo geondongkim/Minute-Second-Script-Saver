@@ -487,6 +487,19 @@ function escapeHtml(str) {
 }
 
 // ========================
+// 사이드 패널 열기
+// ========================
+document.getElementById('openSidePanelBtn')?.addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await chrome.sidePanel.open({ windowId: tab.windowId });
+    window.close();
+  } catch (e) {
+    console.error('[SidePanel] 열기 실패:', e);
+  }
+});
+
+// ========================
 // 시작
 // ========================
 init();
