@@ -26,6 +26,12 @@ let captureStartTime = null;
 let elapsedTimer     = null;
 let currentAliases   = []; // [{ orig, alias }]
 let lastAiResult     = '';
+let refFileContent   = '';
+let refFileNames     = '';
+
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
+}
 
 // ========================
 // 탭 전환
@@ -315,6 +321,81 @@ function buildAiConfig() {
   };
 }
 
+document.getElementById('refFileBtn').addEventListener('click', () => {
+  document.getElementById('refFileInput').click();
+});
+
+document.getElementById('refFileInput').addEventListener('change', async e => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+
+  const nameEl = document.getElementById('refFileName');
+  const preview = document.getElementById('refPreviewBox');
+  nameEl.textContent = '파일 읽는 중...';
+  nameEl.className = 'ref-file-name';
+  preview.style.display = 'none';
+  preview.textContent = '';
+
+  try {
+    const contents = await Promise.all(files.map(readReferenceFile));
+    refFileContent = contents.join('\n\n---\n\n');
+    refFileNames = files.map(file => file.name).join(', ');
+
+    nameEl.textContent = refFileNames;
+    nameEl.className = 'ref-file-name loaded';
+    document.getElementById('refFileClearBtn').style.display = 'inline';
+    preview.style.display = 'block';
+    preview.textContent = refFileContent.slice(0, 400) + (refFileContent.length > 400 ? '...' : '');
+  } catch (err) {
+    refFileContent = '';
+    refFileNames = '';
+    nameEl.textContent = '오류: ' + err.message;
+    nameEl.className = 'ref-file-name';
+    document.getElementById('refFileClearBtn').style.display = 'none';
+  }
+});
+
+document.getElementById('refFileClearBtn').addEventListener('click', () => {
+  refFileContent = '';
+  refFileNames = '';
+  document.getElementById('refFileInput').value = '';
+  document.getElementById('refFileName').textContent = '선택된 파일 없음';
+  document.getElementById('refFileName').className = 'ref-file-name';
+  document.getElementById('refFileClearBtn').style.display = 'none';
+  document.getElementById('refPreviewBox').style.display = 'none';
+  document.getElementById('refPreviewBox').textContent = '';
+});
+
+async function readReferenceFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'pdf') return extractPdfText(file);
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => resolve(String(ev.target.result || ''));
+    reader.onerror = () => reject(new Error(`${file.name} 읽기 실패`));
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+async function extractPdfText(file) {
+  if (typeof pdfjsLib === 'undefined') {
+    throw new Error('PDF 파싱 라이브러리를 불러오지 못했습니다. MD/TXT 파일을 사용하거나 확장을 새로고침하세요.');
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+
+  return text.trim() || '(PDF에서 텍스트를 추출하지 못했습니다. 스캔본 PDF일 수 있습니다.)';
+}
+
 document.getElementById('aiSummarizeBtn').addEventListener('click', async () => {
   const btn = document.getElementById('aiSummarizeBtn');
   const resultEl = document.getElementById('aiResult');
@@ -352,7 +433,10 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
     if (!basePrompt) basePrompt = MEETING_TYPE_PROMPTS.general;
 
     const transcriptText = entries.map(e => `[${e.time}] ${e.name}: ${e.text}`).join('\n');
-    const fullPrompt = `${basePrompt}\n\n회의명: ${meetingTitle}\n---\n${transcriptText}`;
+    const refSection = refFileContent.trim()
+      ? `\n\n참고자료 (${refFileNames}):\n${'-'.repeat(36)}\n${refFileContent}\n${'-'.repeat(36)}`
+      : '';
+    const fullPrompt = `${basePrompt}${refSection}\n\n회의명: ${meetingTitle}\n---\n${transcriptText}`;
 
     // AI 설정 확인
     const config = buildAiConfig();

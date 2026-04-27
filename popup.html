@@ -179,6 +179,33 @@
     }
     .ai-result.placeholder { color: #45475a; }
 
+    .btn-icon {
+      background: none;
+      border: none;
+      color: #6c7086;
+      font-size: 15px;
+      cursor: pointer;
+      padding: 4px 5px;
+    }
+    .btn-icon:hover { color: #cdd6f4; }
+    .ref-file-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .ref-file-name { font-size: 11px; color: #6c7086; flex: 1; min-width: 0; word-break: break-all; }
+    .ref-file-name.loaded { color: #a6e3a1; }
+    .ref-preview-box {
+      display: none;
+      background: #11111b;
+      border: 1px solid #313244;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #a6adc8;
+      max-height: 76px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-family: monospace;
+      margin-top: 4px;
+    }
+
     /* ── 히스토리 탭 ── */
     .history-list { list-style: none; }
     .history-item {
@@ -433,6 +460,17 @@
       <textarea id="customPromptInput" rows="3" placeholder="회의 내용을 요약해주세요..."></textarea>
     </div>
 
+    <div class="form-row">
+      <label>참고자료 첨부 <span style="color:#6c7086;font-weight:400">(MD, TXT, PDF, CSV)</span></label>
+      <div class="ref-file-row">
+        <input type="file" id="refFileInput" accept=".md,.txt,.pdf,.csv" multiple style="display:none">
+        <button class="btn btn-secondary" id="refFileBtn">파일 선택</button>
+        <span class="ref-file-name" id="refFileName">선택된 파일 없음</span>
+        <button class="btn-icon" id="refFileClearBtn" title="제거" style="display:none">x</button>
+      </div>
+      <div class="ref-preview-box" id="refPreviewBox"></div>
+    </div>
+
     <div class="btn-row">
       <button class="btn btn-primary" id="aiSummarizeBtn" style="flex:2">AI 요약 생성</button>
       <button class="btn btn-secondary" id="aiSaveKeyBtn" style="flex:1">키 저장</button>
@@ -458,6 +496,7 @@
     <div class="feedback" id="historyFeedback"></div>
   </div>
 
+  <script src="pdf.min.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

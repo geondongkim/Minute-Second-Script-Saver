@@ -12,7 +12,7 @@ Microsoft Teams 라이브 캡션을 자동으로 캡처, 저장하고 Gemini 또
 - 참석자 목록 추적
 - Chrome Side Panel 지원
 - Gemini/OpenAI 기반 AI 회의록 생성
-- 참고 파일 MD, TXT, PDF 첨부 후 요약에 반영
+- 팝업, 사이드 패널, 뷰어에서 참고 파일 MD, TXT, PDF, CSV 첨부 후 요약에 반영
 
 ## 요구 사항
 
@@ -47,6 +47,7 @@ Microsoft Teams 라이브 캡션을 자동으로 캡처, 저장하고 Gemini 또
 - 모델
 - 회의 유형
 - 커스텀 프롬프트, 선택 사항
+- 참고자료 첨부, 선택 사항
 
 API key는 `chrome.storage.sync`에 저장됩니다. 여러 기기에서 동기화될 수 있으므로 팀 공용 브라우저나 공유 계정에서는 주의하세요.
 
