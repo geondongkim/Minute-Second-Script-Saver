@@ -42,6 +42,10 @@ let collectionStopped = false;
 let collectionId   = makeCollectionId();
 let firstCueHandler = null;
 let firstCueRetryTimer = null;
+let hlsUrl = null;
+let hlsScanTimer = null;
+let hlsScanCount = 0;
+let hlsObserver = null;
 
 const liveCueIds   = new Set();  // 중복 방지
 
@@ -76,6 +80,87 @@ function cleanupCueLoadWaiter() {
   if (firstCueRetryTimer) {
     clearTimeout(firstCueRetryTimer);
     firstCueRetryTimer = null;
+  }
+}
+
+function isM3u8Url(value) {
+  return typeof value === 'string' && (
+    /\.m3u8(?:[?#]|$)/i.test(value) ||
+    /\/playlist(?:\/|.*playlist\.json(?:[?#]|$))/i.test(value) ||
+    /\/master\.json(?:[?#]|$)/i.test(value)
+  );
+}
+
+function normalizeCandidateUrl(value) {
+  if (!value || typeof value !== 'string') return null;
+  try { return new URL(value, location.href).href; } catch { return null; }
+}
+
+function stopHlsDiscovery() {
+  if (hlsScanTimer) {
+    clearInterval(hlsScanTimer);
+    hlsScanTimer = null;
+  }
+  if (hlsObserver) {
+    hlsObserver.disconnect();
+    hlsObserver = null;
+  }
+}
+
+function reportHlsUrl(candidate, source = 'performance') {
+  const normalized = normalizeCandidateUrl(candidate);
+  if (!isM3u8Url(normalized) || normalized === hlsUrl) return null;
+
+  hlsUrl = normalized;
+  safeMessage({
+    type:       'VIMEO_HLS_FOUND',
+    hlsUrl,
+    source,
+    sourceUrl:  location.href,
+    pageUrl:    document.referrer || location.href,
+    videoTitle,
+    foundAt:    Date.now(),
+  });
+  stopHlsDiscovery();
+  console.log('[VimeoCaptionSaver] HLS URL 감지:', hlsUrl);
+  return hlsUrl;
+}
+
+function scanHlsCandidates() {
+  const candidates = [];
+
+  try {
+    candidates.push(...performance.getEntriesByType('resource').map(entry => entry.name));
+  } catch { /* performance API 사용 불가 */ }
+
+  document.querySelectorAll('video, source, script, link').forEach(el => {
+    candidates.push(el.currentSrc, el.src, el.href, el.getAttribute('src'), el.getAttribute('href'));
+  });
+
+  const found = candidates.map(normalizeCandidateUrl).find(isM3u8Url);
+  return found ? reportHlsUrl(found, 'frame-scan') : hlsUrl;
+}
+
+function startHlsDiscovery() {
+  scanHlsCandidates();
+
+  if (!hlsObserver && 'PerformanceObserver' in globalThis) {
+    try {
+      hlsObserver = new PerformanceObserver(list => {
+        for (const entry of list.getEntries()) {
+          if (reportHlsUrl(entry.name, 'performance-observer')) break;
+        }
+      });
+      hlsObserver.observe({ type: 'resource', buffered: true });
+    } catch { hlsObserver = null; }
+  }
+
+  if (!hlsScanTimer && !hlsUrl) {
+    hlsScanTimer = setInterval(() => {
+      hlsScanCount += 1;
+      scanHlsCandidates();
+      if (hlsUrl || hlsScanCount >= 90) stopHlsDiscovery();
+    }, 2000);
   }
 }
 
@@ -227,6 +312,9 @@ if (document.readyState === 'loading') {
 } else {
   init();
 }
+startHlsDiscovery();
+document.addEventListener('play', scanHlsCandidates, true);
+document.addEventListener('loadedmetadata', scanHlsCandidates, true);
 
 // video 요소가 늦게 로드되는 경우 재시도 (최대 10초)
 let retryCount = 0;
@@ -309,6 +397,9 @@ function handleVimeoControlMessage(msg) {
   }
   if (msg.type === 'VIMEO_RECOLLECT') {
     return recollect();
+  }
+  if (msg.type === 'VIMEO_SCAN_HLS') {
+    return { ok: true, hlsUrl: scanHlsCandidates() || hlsUrl };
   }
   return null;
 }

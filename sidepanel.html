@@ -308,6 +308,23 @@
     .vimeo-complete-badge { font-size: 15px; font-weight: 700; color: var(--green); margin-bottom: 8px; }
     .vimeo-stats-chips { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 2px; }
     .stat-chip { background: var(--border); border-radius: 20px; padding: 3px 10px; font-size: 11px; color: var(--text); font-weight: 600; }
+    .hls-tool-block {
+      background: var(--deep); border: 1px solid var(--surface); border-radius: 8px;
+      padding: 10px 12px; text-align: left;
+    }
+    .hls-tool-title {
+      font-size: 10px; font-weight: 700; color: #fab387;
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+    }
+    .hls-url-preview {
+      font-family: Consolas, 'Courier New', monospace;
+      font-size: 10px; color: var(--green); background: var(--bg);
+      border: 1px solid var(--surface); border-radius: 6px;
+      padding: 6px 8px; margin-bottom: 8px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .hls-url-preview.placeholder { color: var(--muted); }
+    .hls-tool-actions { margin-bottom: 8px; }
 
     /* ── 공통 ── */
     .feedback { font-size: 11px; text-align: center; min-height: 18px; margin-top: 8px; color: var(--green); }
@@ -411,6 +428,17 @@
       <div class="vimeo-title-block" id="vimeoTitleBlock" style="display:none">
         <div class="vimeo-lesson-title" id="vimeoLessonTitle"></div>
         <div class="vimeo-video-title"  id="vimeoVideoTitle"></div>
+      </div>
+
+      <div class="hls-tool-block" id="vimeoHlsToolBlock">
+        <div class="hls-tool-title">HLS/Manifest 영상 링크</div>
+        <div class="hls-url-preview placeholder" id="vimeoHlsPreview">재생하면 m3u8 또는 manifest 주소를 자동 탐색합니다</div>
+        <div class="btn-row hls-tool-actions">
+          <button class="btn btn-secondary" id="vimeoRefreshHlsBtn">다시 확인</button>
+          <button class="btn btn-secondary" id="vimeoCopyHlsBtn" disabled>URL 복사</button>
+        </div>
+        <button class="btn btn-accent btn-full" id="vimeoCopyYtDlpBtn" disabled>yt-dlp 명령 복사</button>
+        <div class="vimeo-status-hint">복사한 명령은 로컬 터미널에서 실행합니다</div>
       </div>
 
       <div class="vimeo-status-block" id="vimeoWaiting">

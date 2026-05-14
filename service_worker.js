@@ -25,6 +25,66 @@ function updateBadge(capturing) {
 chrome.runtime.onInstalled.addListener(() => updateBadge(false));
 chrome.runtime.onStartup.addListener(() => updateBadge(false));
 
+function isVimeoHlsUrl(url) {
+  return typeof url === 'string' && (
+    /\.m3u8(?:[?#]|$)/i.test(url) ||
+    /\/playlist(?:\/|.*playlist\.json(?:[?#]|$))/i.test(url) ||
+    /\/master\.json(?:[?#]|$)/i.test(url)
+  );
+}
+
+async function recordVimeoHlsUrl(tabId, hlsUrl, source = 'unknown', extra = {}) {
+  if (!tabId || tabId < 0 || !isVimeoHlsUrl(hlsUrl)) return null;
+
+  const statusKey = `vimeo_status_${tabId}`;
+  const { [statusKey]: prev } = await chrome.storage.local.get(statusKey);
+  const foundAt = extra.foundAt || Date.now();
+  const nextStatus = {
+    ...(prev || {}),
+    status: prev?.status || 'waiting',
+    tabId,
+    hlsUrl,
+    hlsUrlFoundAt: foundAt,
+    hlsSource: source,
+  };
+
+  if (extra.videoTitle && !nextStatus.videoTitle) nextStatus.videoTitle = extra.videoTitle;
+  if (extra.sourceUrl && !nextStatus.sourceUrl) nextStatus.sourceUrl = extra.sourceUrl;
+  if (extra.pageUrl && !nextStatus.pageUrl) nextStatus.pageUrl = extra.pageUrl;
+
+  await chrome.storage.local.set({
+    [statusKey]: nextStatus,
+    [`vimeo_hls_${tabId}`]: {
+      tabId,
+      url: hlsUrl,
+      source,
+      sourceUrl: extra.sourceUrl || null,
+      pageUrl: extra.pageUrl || null,
+      videoTitle: extra.videoTitle || nextStatus.videoTitle || null,
+      foundAt,
+    },
+  });
+  return nextStatus;
+}
+
+chrome.webRequest?.onBeforeRequest.addListener(
+  details => {
+    if (details.tabId < 0 || !isVimeoHlsUrl(details.url)) return;
+    recordVimeoHlsUrl(details.tabId, details.url, 'webRequest').catch(err => {
+      console.warn('[TeamsCaptionSaverKR] HLS URL 저장 실패:', err);
+    });
+  },
+  {
+    urls: [
+      'https://player.vimeo.com/*',
+      'https://*.vimeo.com/*',
+      'https://*.vimeocdn.com/*',
+      'https://*.akamaized.net/*',
+    ],
+    types: ['xmlhttprequest', 'media', 'other'],
+  }
+);
+
 // ========================
 // 메시지 핸들러
 // ========================
@@ -46,20 +106,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === 'VIMEO_CAPTIONS_START') {
       const tabId = sender.tab?.id;
       if (tabId) {
+        const statusKey = `vimeo_status_${tabId}`;
+        const { [statusKey]: prev } = await chrome.storage.local.get(statusKey);
         const lessonTitle = cleanTabTitle(sender.tab.title);
         await chrome.storage.local.set({
-          [`vimeo_status_${tabId}`]: {
+          [statusKey]: {
+            ...(prev || {}),
             status:     'collecting',
             videoTitle: msg.videoTitle ?? null,
             lessonTitle,
             tabId,
             sourceUrl:  msg.sourceUrl,
+            pageUrl:    msg.pageUrl || prev?.pageUrl || sender.tab.url || null,
             startedAt:  msg.startedAt ?? Date.now(),
             collectionId: msg.collectionId ?? null,
           }
         });
       }
       sendResponse({ ok: true });
+      return;
+    }
+
+    // ── Vimeo HLS(m3u8) URL 발견 ──
+    if (msg.type === 'VIMEO_HLS_FOUND') {
+      const tabId = sender.tab?.id;
+      const status = await recordVimeoHlsUrl(tabId, msg.hlsUrl, msg.source || 'contentScript', msg);
+      sendResponse({ ok: Boolean(status), status });
       return;
     }
 
@@ -143,6 +215,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const key = `vimeo_status_${msg.tabId}`;
         const result = await chrome.storage.local.get(key);
         sendResponse({ status: result[key] ?? null });
+        break;
+      }
+
+      // Vimeo HLS URL 수동 저장 (popup이 프레임 스캔 결과를 즉시 반영할 때 사용)
+      case 'record_vimeo_hls_url': {
+        const status = await recordVimeoHlsUrl(msg.tabId, msg.hlsUrl, msg.source || 'popup', msg);
+        sendResponse({ ok: Boolean(status), status });
         break;
       }
 
@@ -366,9 +445,11 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
   if (!cues?.length) return;
 
   const tabId = sender?.tab?.id ?? null;
+  let currentStatus = null;
   if (tabId) {
     const statusKey = `vimeo_status_${tabId}`;
-    const { [statusKey]: currentStatus } = await chrome.storage.local.get(statusKey);
+    const result = await chrome.storage.local.get(statusKey);
+    currentStatus = result[statusKey] || null;
     if (currentStatus?.status === 'stopped' && (!collectionId || currentStatus.collectionId === collectionId)) {
       console.log('[TeamsCaptionSaverKR] 중단된 Vimeo 수집 결과 무시:', sourceUrl);
       return;
@@ -400,9 +481,13 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
         duration,
         sessionId,
         sourceUrl,
+        pageUrl: currentStatus?.pageUrl || pageUrl || sender?.tab?.url || null,
         date:        new Date(collectedAt || Date.now()).toLocaleDateString('ko-KR'),
         collectedAt: collectedAt || Date.now(),
         collectionId: collectionId ?? null,
+        hlsUrl: currentStatus?.hlsUrl || null,
+        hlsUrlFoundAt: currentStatus?.hlsUrlFoundAt || null,
+        hlsSource: currentStatus?.hlsSource || null,
       }
     });
   }
@@ -416,6 +501,8 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
     pageUrl:     pageUrl || sourceUrl,
     trackLabel,
     trackLang,
+    hlsUrl:      currentStatus?.hlsUrl || null,
+    hlsUrlFoundAt: currentStatus?.hlsUrlFoundAt || null,
     cueCount:    cues.length,
     duration,
     collectedAt: collectedAt || Date.now(),

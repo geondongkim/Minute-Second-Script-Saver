@@ -156,6 +156,8 @@ function renderVimeoStatus(status) {
     titleBlock.style.display = 'none';
   }
 
+  renderVimeoHlsTool(status);
+
   if (!status || status.status === 'waiting') {
     waitingEl.style.display    = 'block';
     collectingEl.style.display = 'none';
@@ -220,6 +222,102 @@ function startVimeoPoll(tabId) {
 
 function stopVimeoPoll() {
   if (vimeoPollTimer) { clearInterval(vimeoPollTimer); vimeoPollTimer = null; }
+}
+
+function getVimeoHlsUrl(status = currentVimeoStatus) {
+  return status?.hlsUrl || null;
+}
+
+function shortenHlsUrl(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    const compact = `${parsed.hostname}${parsed.pathname}`;
+    return compact.length > 74 ? compact.slice(0, 71) + '...' : compact;
+  } catch {
+    return url.length > 74 ? url.slice(0, 71) + '...' : url;
+  }
+}
+
+function renderVimeoHlsTool(status) {
+  const preview = document.getElementById('vimeoHlsPreview');
+  const copyBtn = document.getElementById('vimeoCopyHlsBtn');
+  const commandBtn = document.getElementById('vimeoCopyYtDlpBtn');
+  if (!preview || !copyBtn || !commandBtn) return;
+
+  const hlsUrl = getVimeoHlsUrl(status);
+  if (hlsUrl) {
+    preview.textContent = shortenHlsUrl(hlsUrl);
+    preview.title = hlsUrl;
+    preview.classList.remove('placeholder');
+    copyBtn.disabled = false;
+    commandBtn.disabled = false;
+  } else {
+    preview.textContent = '재생하면 m3u8 또는 manifest 주소를 자동 탐색합니다';
+    preview.title = '';
+    preview.classList.add('placeholder');
+    copyBtn.disabled = true;
+    commandBtn.disabled = true;
+  }
+}
+
+function setVimeoFeedback(message, isError = false) {
+  const fb = document.getElementById('vimeoFeedback');
+  if (!fb) return;
+  fb.textContent = message;
+  fb.className = 'feedback' + (isError ? ' error' : '');
+}
+
+function escapeCommandArg(value) {
+  return String(value || '').replace(/"/g, '\\"');
+}
+
+function buildYtDlpCommand(hlsUrl) {
+  const sourceUrl = currentVimeoStatus?.sourceUrl || '';
+  const referer = currentVimeoStatus?.pageUrl || '';
+  const downloadUrl = /player\.vimeo\.com\/video\//i.test(sourceUrl) ? sourceUrl : hlsUrl;
+  const title = currentVimeoStatus?.title || currentVimeoStatus?.videoTitle || 'vimeo';
+  const safe = sanitizeFilenameSimple(title);
+  const refererArg = referer ? ` --referer "${escapeCommandArg(referer)}"` : '';
+  return `yt-dlp "${escapeCommandArg(downloadUrl)}"${refererArg} -o "videos/${safe}.%(ext)s"`;
+}
+
+async function copyTextToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('클립보드 복사 권한을 얻지 못했습니다.');
+  }
+}
+
+async function refreshVimeoHlsUrl() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) throw new Error('탭을 찾을 수 없습니다');
+
+  const resp = await sendVimeoFrameCommand(tab.id, { type: 'VIMEO_SCAN_HLS' });
+  if (resp?.hlsUrl) {
+    const saved = await sendRuntimeMessage({
+      message: 'record_vimeo_hls_url',
+      tabId: tab.id,
+      hlsUrl: resp.hlsUrl,
+      source: 'manual-scan',
+    });
+    const status = saved?.status || { ...(currentVimeoStatus || {}), hlsUrl: resp.hlsUrl };
+    renderVimeoStatus(status);
+    return resp.hlsUrl;
+  }
+
+  const status = await getVimeoStatus(tab.id);
+  renderVimeoStatus(status);
+  return getVimeoHlsUrl(status);
 }
 
 // Vimeo 뷰어 열기
@@ -313,6 +411,47 @@ async function handleVimeoRecollect() {
 
 document.getElementById('vimeoRecollectBtn')?.addEventListener('click', handleVimeoRecollect);
 document.getElementById('vimeoStoppedRecollectBtn')?.addEventListener('click', handleVimeoRecollect);
+
+document.getElementById('vimeoRefreshHlsBtn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('vimeoRefreshHlsBtn');
+  btn.disabled = true;
+  setVimeoFeedback('영상 manifest 다시 확인 중…');
+  try {
+    const hlsUrl = await refreshVimeoHlsUrl();
+    setVimeoFeedback(hlsUrl ? '✅ 영상 manifest URL 확인됨' : '⚠️ 아직 영상 manifest URL을 찾지 못했습니다', !hlsUrl);
+  } catch (e) {
+    setVimeoFeedback('❌ ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { if (document.getElementById('vimeoFeedback')?.textContent.includes('manifest')) setVimeoFeedback(''); }, 3000);
+  }
+});
+
+document.getElementById('vimeoCopyHlsBtn')?.addEventListener('click', async () => {
+  try {
+    const hlsUrl = getVimeoHlsUrl() || await refreshVimeoHlsUrl();
+    if (!hlsUrl) throw new Error('영상 manifest URL이 아직 감지되지 않았습니다. 영상을 재생한 뒤 다시 시도하세요.');
+    await copyTextToClipboard(hlsUrl);
+    setVimeoFeedback('✅ 영상 manifest URL 복사됨');
+  } catch (e) {
+    setVimeoFeedback('❌ ' + e.message, true);
+  } finally {
+    setTimeout(() => { if (document.getElementById('vimeoFeedback')?.textContent.includes('복사')) setVimeoFeedback(''); }, 3000);
+  }
+});
+
+document.getElementById('vimeoCopyYtDlpBtn')?.addEventListener('click', async () => {
+  try {
+    const hlsUrl = getVimeoHlsUrl() || await refreshVimeoHlsUrl();
+    if (!hlsUrl) throw new Error('영상 manifest URL이 아직 감지되지 않았습니다. 영상을 재생한 뒤 다시 시도하세요.');
+    await copyTextToClipboard(buildYtDlpCommand(hlsUrl));
+    setVimeoFeedback('✅ yt-dlp 명령 복사됨');
+  } catch (e) {
+    setVimeoFeedback('❌ ' + e.message, true);
+  } finally {
+    setTimeout(() => { if (document.getElementById('vimeoFeedback')?.textContent.includes('복사')) setVimeoFeedback(''); }, 3000);
+  }
+});
 
 document.getElementById('vimeoStopBtn')?.addEventListener('click', async () => {
   const fb  = document.getElementById('vimeoFeedback');

@@ -285,6 +285,23 @@
       background: #45475a; border-radius: 20px;
       padding: 3px 10px; font-size: 11px; color: #cdd6f4; font-weight: 600;
     }
+    .hls-tool-block {
+      background: #181825; border: 1px solid #313244; border-radius: 8px;
+      padding: 10px 12px; text-align: left;
+    }
+    .hls-tool-title {
+      font-size: 10px; font-weight: 700; color: #fab387;
+      text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+    }
+    .hls-url-preview {
+      font-family: Consolas, 'Courier New', monospace;
+      font-size: 10px; color: #a6e3a1; background: #11111b;
+      border: 1px solid #313244; border-radius: 6px;
+      padding: 6px 8px; margin-bottom: 8px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .hls-url-preview.placeholder { color: #6c7086; }
+    .hls-tool-actions { margin-bottom: 8px; }
 
     /* ── 피드백 / 공통 ── */
     .feedback { font-size: 11px; text-align: center; min-height: 18px; margin-top: 8px; color: #a6e3a1; }
@@ -398,6 +415,17 @@
       <div class="vimeo-title-block" id="vimeoTitleBlock" style="display:none">
         <div class="vimeo-lesson-title" id="vimeoLessonTitle"></div>
         <div class="vimeo-video-title"  id="vimeoVideoTitle"></div>
+      </div>
+
+      <div class="hls-tool-block" id="vimeoHlsToolBlock">
+        <div class="hls-tool-title">HLS/Manifest 영상 링크</div>
+        <div class="hls-url-preview placeholder" id="vimeoHlsPreview">재생하면 m3u8 또는 manifest 주소를 자동 탐색합니다</div>
+        <div class="btn-row hls-tool-actions">
+          <button class="btn btn-secondary" id="vimeoRefreshHlsBtn">다시 확인</button>
+          <button class="btn btn-secondary" id="vimeoCopyHlsBtn" disabled>URL 복사</button>
+        </div>
+        <button class="btn btn-accent btn-full" id="vimeoCopyYtDlpBtn" disabled>yt-dlp 명령 복사</button>
+        <div class="vimeo-status-hint">복사한 명령은 로컬 터미널에서 실행합니다</div>
       </div>
 
       <!-- 상태: 대기 -->
