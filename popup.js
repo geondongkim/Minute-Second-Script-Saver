@@ -229,7 +229,9 @@ document.getElementById('vimeoDownloadBtn')?.addEventListener('click', async () 
     const safe = sanitizeFilenameSimple(meta.title || 'vimeo');
     const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(lines);
     chrome.downloads.download({ url: dataUrl, filename: `teams-captions/vimeo/${safe}.txt`, saveAs: false });
-    window.close();
+    const fb = document.getElementById('vimeoFeedback');
+    fb.textContent = '✅ 저장됨';
+    setTimeout(() => { fb.textContent = ''; }, 3000);
   } catch (e) {
     document.getElementById('vimeoFeedback').textContent = '❌ ' + e.message;
   }

@@ -64,6 +64,14 @@ async function init() {
   document.title = viewerMeetingTitle;
   document.getElementById('viewerTitle').textContent = viewerMeetingTitle;
 
+  // Vimeo: 발화자 관련 UI 숨기기
+  if (viewerSourceType === 'vimeo') {
+    document.querySelector('[data-vtab="speaker"]')?.style.setProperty('display', 'none');
+    document.getElementById('metaSpeakers')?.closest('span').style.setProperty('display', 'none');
+    const si = document.getElementById('searchInput');
+    if (si) si.placeholder = '내용 검색…';
+  }
+
   if (captionsToView.length) renderAll(captionsToView);
   await loadAiConfig();
 
@@ -97,6 +105,7 @@ function renderAll(entries) {
 }
 
 function renderSpeakerFilters() {
+  if (viewerSourceType === 'vimeo') return;
   const container = document.getElementById('speakerFilters');
   container.innerHTML = '';
 
@@ -127,24 +136,38 @@ function renderCaptions() {
 }
 
 function buildEntry(e) {
-  const colorIdx = speakerColorMap[e.name] ?? 0;
   const div = document.createElement('div');
-  div.className = `caption-entry color-${colorIdx}`;
   div.dataset.key = e.key;
-  div.innerHTML = `
-    <div class="caption-header">
-      <span class="caption-name">${escapeHtml(e.name)}</span>
-      <span class="caption-time">${escapeHtml(e.time)}</span>
-    </div>
-    <div class="caption-text">${escapeHtml(e.text)}</div>
-  `;
+  if (viewerSourceType === 'vimeo') {
+    div.className = 'caption-entry';
+    div.innerHTML = `
+      <div class="caption-header">
+        <span class="caption-time">${escapeHtml(e.time)}</span>
+      </div>
+      <div class="caption-text">${escapeHtml(e.text)}</div>
+    `;
+  } else {
+    const colorIdx = speakerColorMap[e.name] ?? 0;
+    div.className = `caption-entry color-${colorIdx}`;
+    div.innerHTML = `
+      <div class="caption-header">
+        <span class="caption-name">${escapeHtml(e.name)}</span>
+        <span class="caption-time">${escapeHtml(e.time)}</span>
+      </div>
+      <div class="caption-text">${escapeHtml(e.text)}</div>
+    `;
+  }
   return div;
 }
 
 function applyFilters(entries) {
   return entries.filter(e => {
-    if (activeSpeaker !== 'all' && e.name !== activeSpeaker) return false;
-    if (searchTerm && !e.name.toLowerCase().includes(searchTerm) && !e.text.toLowerCase().includes(searchTerm)) return false;
+    if (viewerSourceType !== 'vimeo' && activeSpeaker !== 'all' && e.name !== activeSpeaker) return false;
+    if (searchTerm) {
+      const inText = e.text.toLowerCase().includes(searchTerm);
+      const inName = viewerSourceType !== 'vimeo' && e.name.toLowerCase().includes(searchTerm);
+      if (!inText && !inName) return false;
+    }
     return true;
   });
 }
@@ -233,8 +256,9 @@ function appendEntry(e) {
   const empty = container.querySelector('.empty-state');
   if (empty) empty.remove();
 
-  const show = (activeSpeaker === 'all' || e.name === activeSpeaker) &&
-    (!searchTerm || e.name.toLowerCase().includes(searchTerm) || e.text.toLowerCase().includes(searchTerm));
+  const show = (viewerSourceType === 'vimeo' || activeSpeaker === 'all' || e.name === activeSpeaker) &&
+    (!searchTerm || e.text.toLowerCase().includes(searchTerm) ||
+     (viewerSourceType !== 'vimeo' && e.name.toLowerCase().includes(searchTerm)));
 
   const el = buildEntry(e);
   if (!show) el.classList.add('hidden');
