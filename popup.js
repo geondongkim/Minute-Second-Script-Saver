@@ -26,6 +26,7 @@ let captureStartTime = null;
 let elapsedTimer     = null;
 let currentAliases   = []; // [{ orig, alias }]
 let lastAiResult     = '';
+let lastAiTitle      = ''; // 다운로드 경로용 제목
 let refFileContent   = '';
 let refFileNames     = '';
 let vimeoPollTimer   = null;   // Vimeo 상태 폴링
@@ -202,7 +203,7 @@ document.getElementById('vimeoViewerBtn')?.addEventListener('click', async () =>
       text: c.text,
       time: formatCueTime(c.start),
     }));
-    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: meta.title || meta.videoTitle });
+    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: meta.title || meta.videoTitle, viewerSourceType: 'vimeo' });
     chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
     window.close();
   } catch (e) {
@@ -320,7 +321,7 @@ document.getElementById('viewerBtn').addEventListener('click', async () => {
         title   = t.meetingTitle || '';
       } catch {}
     }
-    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: title });
+    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: title, viewerSourceType: 'teams' });
     chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
     window.close();
   } catch (e) {
@@ -427,9 +428,10 @@ async function loadAiSettings() {
   document.getElementById('openaiModel').value     = c.openaiModel || 'gpt-5.4-mini';
   updateProviderSections(c.provider || 'gemini');
 
-  const { popup_ai_result: saved = '' } = await chrome.storage.local.get('popup_ai_result');
+  const { popup_ai_result: saved = '', popup_ai_title: savedTitle = '' } = await chrome.storage.local.get(['popup_ai_result', 'popup_ai_title']);
   if (saved) {
     lastAiResult = saved;
+    lastAiTitle  = savedTitle;
     const resultEl = document.getElementById('aiResult');
     resultEl.className = 'ai-result';
     resultEl.textContent = saved;
@@ -580,6 +582,10 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
       : (MEETING_TYPE_PROMPTS[meetingType] || MEETING_TYPE_PROMPTS.general);
     if (!basePrompt) basePrompt = MEETING_TYPE_PROMPTS.general;
 
+    // 추가 지시사항 병합
+    const extraPrompt = document.getElementById('additionalPromptInput').value.trim();
+    if (extraPrompt) basePrompt += `\n\n추가 지시사항: ${extraPrompt}`;
+
     const transcriptText = entries.map(e => `[${e.time}] ${e.name}: ${e.text}`).join('\n');
     const refSection = refFileContent.trim()
       ? `\n\n참고자료 (${refFileNames}):\n${'-'.repeat(36)}\n${refFileContent}\n${'-'.repeat(36)}`
@@ -591,7 +597,8 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
     const result = await callAiApi(config, fullPrompt);
 
     lastAiResult = result;
-    chrome.storage.local.set({ popup_ai_result: result });
+    lastAiTitle  = meetingTitle;
+    chrome.storage.local.set({ popup_ai_result: result, popup_ai_title: meetingTitle });
     resultEl.className = 'ai-result';
     resultEl.textContent = result;
     setFeedback('ai', '✅ 요약 완료');
@@ -655,9 +662,14 @@ document.getElementById('aiCopyBtn').addEventListener('click', async () => {
 
 document.getElementById('aiDownloadBtn').addEventListener('click', () => {
   if (!lastAiResult) return;
-  const date = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const safe = sanitizeFilenameSimple(lastAiTitle || '요약');
+  const date = new Date().toLocaleDateString('ko-KR').replace(/\./g, '').replace(/\s+/g, '-');
   const dataUrl = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(lastAiResult);
-  chrome.downloads.download({ url: dataUrl, filename: `ai-summary-${date}.md`, saveAs: false });
+  chrome.downloads.download({
+    url:      dataUrl,
+    filename: `teams-captions/teams/${safe}/summary-${safe}.md`,
+    saveAs:   false,
+  });
   setFeedback('ai', '✅ 다운로드 시작');
   setTimeout(() => setFeedback('ai', ''), 2000);
 });
@@ -726,7 +738,7 @@ async function openSessionInViewer(meta) {
     const keys   = Array.from({ length: meta.chunkCount }, (_, i) => `${meta.id}_chunk_${i}`);
     const chunks = await chrome.storage.local.get(keys);
     const entries = keys.flatMap(k => chunks[k] || []);
-    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: meta.title });
+    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: meta.title, viewerSourceType: 'teams' });
     chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
     window.close();
   } catch (e) {
@@ -747,7 +759,7 @@ async function openVimeoSessionInViewer(meta) {
       text: c.text,
       time: formatCueTime(c.start),
     }));
-    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: meta.title });
+    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: meta.title, viewerSourceType: 'vimeo' });
     chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
     window.close();
   } catch (e) {

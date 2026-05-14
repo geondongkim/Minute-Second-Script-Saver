@@ -9,6 +9,8 @@ let speakerColorMap = {};  // name → colorIndex (0-7)
 let activeSpeaker   = 'all';
 let searchTerm      = '';
 let isLive          = false;
+let viewerSourceType = 'teams'; // 'teams' | 'vimeo'
+let viewerTitleStr   = '';       // 저장 경로용 제목
 
 // AI 관련
 let lastAiResult    = '';
@@ -53,8 +55,11 @@ document.querySelectorAll('.vtab').forEach(btn => {
 // 초기화
 // ============================================================
 async function init() {
-  const { captionsToView = [], viewerMeetingTitle = '자막 뷰어' } =
-    await chrome.storage.local.get(['captionsToView', 'viewerMeetingTitle']);
+  const { captionsToView = [], viewerMeetingTitle = '자막 뷰어', viewerSourceType: srcType = 'teams' } =
+    await chrome.storage.local.get(['captionsToView', 'viewerMeetingTitle', 'viewerSourceType']);
+
+  viewerSourceType = srcType;
+  viewerTitleStr   = viewerMeetingTitle;
 
   document.title = viewerMeetingTitle;
   document.getElementById('viewerTitle').textContent = viewerMeetingTitle;
@@ -177,6 +182,9 @@ document.getElementById('saveAllBtn').addEventListener('click', () => {
 });
 
 function buildPlainText() {
+  if (viewerSourceType === 'vimeo') {
+    return allEntries.map(e => `[${e.time}] ${e.text}`).join('\n');
+  }
   return allEntries.map(e => `[${e.time}] ${e.name}: ${e.text}`).join('\n');
 }
 
@@ -514,7 +522,14 @@ document.getElementById('viewerSummarizeBtn').addEventListener('click', async ()
     if (!basePrompt) basePrompt = MEETING_TYPE_PROMPTS.general;
 
     const title          = document.getElementById('viewerTitle').textContent;
-    const transcriptText = allEntries.map(e => `[${e.time}] ${e.name}: ${e.text}`).join('\n');
+    // Vimeo는 발화자 없이 [시간] 내용 포맷
+    const transcriptText = viewerSourceType === 'vimeo'
+      ? allEntries.map(e => `[${e.time}] ${e.text}`).join('\n')
+      : allEntries.map(e => `[${e.time}] ${e.name}: ${e.text}`).join('\n');
+
+    // 추가 지시사항
+    const extraPrompt = document.getElementById('viewerAdditionalPrompt').value.trim();
+    if (extraPrompt) basePrompt += `\n\n추가 지시사항: ${extraPrompt}`;
 
     let refSection = '';
     if (refFileContent.trim()) {
@@ -712,10 +727,15 @@ document.getElementById('viewerCopyBtn').addEventListener('click', async () => {
 
 document.getElementById('viewerSaveBtn').addEventListener('click', () => {
   if (!lastAiResult) return;
-  const title   = sanitizeFilename(document.getElementById('viewerTitle').textContent);
-  const date    = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const dataUrl = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(lastAiResult);
-  chrome.downloads.download({ url: dataUrl, filename: `summary-${title}-${date}.md`, saveAs: false });
+  const rawTitle  = viewerTitleStr || document.getElementById('viewerTitle').textContent;
+  const safe      = sanitizeFilename(rawTitle);
+  const srcFolder = viewerSourceType === 'vimeo' ? 'vimeo' : 'teams';
+  const dataUrl   = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(lastAiResult);
+  chrome.downloads.download({
+    url:      dataUrl,
+    filename: `teams-captions/${srcFolder}/${safe}/summary-${safe}.md`,
+    saveAs:   false,
+  });
   flashBtn('viewerSaveBtn', '✅ 저장됨');
 });
 
