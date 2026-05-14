@@ -414,7 +414,19 @@
           <span class="spinner"></span>
           <span>자막 수집 중…</span>
         </div>
-        <div class="vimeo-status-hint">페이지를 닫지 마세요</div>
+        <div class="vimeo-status-hint">필요하면 중단 후 다시 수집할 수 있습니다</div>
+        <div class="btn-row" style="margin-top:10px;margin-bottom:0">
+          <button class="btn btn-ghost" id="vimeoStopBtn">⏹ 수집 중단</button>
+        </div>
+      </div>
+
+      <!-- 상태: 중단 -->
+      <div class="vimeo-status-block" id="vimeoStopped" style="display:none">
+        <div class="vimeo-complete-badge" style="color:#fab387">⏹ 수집 중단됨</div>
+        <div class="vimeo-status-hint">자막이 누락되었으면 재수집을 눌러 다시 시도하세요</div>
+        <div class="btn-row" style="margin-top:10px;margin-bottom:0">
+          <button class="btn btn-ghost" id="vimeoStoppedRecollectBtn">🔄 재수집</button>
+        </div>
       </div>
 
       <!-- 상태: 완료 -->

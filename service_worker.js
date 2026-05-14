@@ -55,6 +55,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             tabId,
             sourceUrl:  msg.sourceUrl,
             startedAt:  msg.startedAt ?? Date.now(),
+            collectionId: msg.collectionId ?? null,
           }
         });
       }
@@ -95,6 +96,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await chrome.storage.local.set({
             captionsToView:     msg.entries,
             viewerMeetingTitle: msg.meetingTitle || '',
+            viewerSourceType:   msg.sourceType || 'teams',
           });
         }
         chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
@@ -150,20 +152,53 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const { [key]: prev } = await chrome.storage.local.get(key);
         if (prev) {
           await chrome.storage.local.set({
-            [key]: { ...prev, status: 'collecting', cueCount: 0, sessionId: undefined }
+            [key]: { ...prev, status: 'collecting', cueCount: 0, sessionId: undefined, stoppedAt: undefined }
           });
         }
         sendResponse({ ok: true });
         break;
       }
 
-      // Vimeo 재수집 요청 — 탭의 모든 프레임에 relay
+      // Vimeo 수집 중단 — 현재 탭 상태를 stopped로 전환
+      case 'stop_vimeo_status': {
+        const key = `vimeo_status_${msg.tabId}`;
+        const { [key]: prev } = await chrome.storage.local.get(key);
+        await chrome.storage.local.set({
+          [key]: {
+            ...(prev || {}),
+            status: 'stopped',
+            tabId: msg.tabId,
+            stoppedAt: Date.now(),
+          }
+        });
+        sendResponse({ ok: true });
+        break;
+      }
+
+      // Vimeo 제어 요청 — 탭의 모든 프레임에 relay
       case 'relay_to_frames': {
         const { tabId: relayTabId, payload } = msg;
-        chrome.tabs.sendMessage(relayTabId, payload, { frameId: 0 }, () => chrome.runtime.lastError);
-        // allFrames 방식: content_scripts의 all_frames:true 덕분에 각 프레임이 독립 수신
-        chrome.tabs.sendMessage(relayTabId, payload, () => chrome.runtime.lastError);
-        sendResponse({ ok: true });
+        if (!relayTabId || !payload) {
+          sendResponse({ ok: false, error: 'relay 대상이 없습니다.' });
+          break;
+        }
+
+        const direct = await chrome.tabs.sendMessage(relayTabId, payload).catch(() => null);
+        if (direct?.ok) {
+          sendResponse(direct);
+          break;
+        }
+
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: relayTabId, allFrames: true },
+          func: (relayPayload) => {
+            return globalThis.__vimeoCaptionSaverControl?.handleMessage(relayPayload) ?? null;
+          },
+          args: [payload],
+        }).catch(() => []);
+
+        const handled = results.map(r => r.result).find(Boolean);
+        sendResponse(handled || direct || { ok: false, error: 'Vimeo 프레임에 연결하지 못했습니다.' });
         break;
       }
 
@@ -327,10 +362,19 @@ function sanitizeFilename(str) {
 // ========================
 // Vimeo 배치 수집 처리
 // ========================
-async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, trackLang, cues, collectedAt }, sender) {
+async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, trackLang, cues, collectedAt, collectionId }, sender) {
   if (!cues?.length) return;
 
   const tabId = sender?.tab?.id ?? null;
+  if (tabId) {
+    const statusKey = `vimeo_status_${tabId}`;
+    const { [statusKey]: currentStatus } = await chrome.storage.local.get(statusKey);
+    if (currentStatus?.status === 'stopped' && (!collectionId || currentStatus.collectionId === collectionId)) {
+      console.log('[TeamsCaptionSaverKR] 중단된 Vimeo 수집 결과 무시:', sourceUrl);
+      return;
+    }
+  }
+
   const sessionId = `vimeo_${collectedAt || Date.now()}`;
 
   // 큐 저장
@@ -358,6 +402,7 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
         sourceUrl,
         date:        new Date(collectedAt || Date.now()).toLocaleDateString('ko-KR'),
         collectedAt: collectedAt || Date.now(),
+        collectionId: collectionId ?? null,
       }
     });
   }

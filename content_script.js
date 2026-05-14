@@ -75,6 +75,8 @@ let rootObserver      = null; // document.body 전체 감시 observer
 let autoSaveTimer = null;     // 5분마다 overwrite 저장용 setInterval
 let backupInterval = null;    // 30초마다 로컬 백업
 let autoSaveEnabled = true;   // 자동 저장 ON/OFF
+let autoSaveOnEnd   = false;  // 통화 종료 시 다운로드 저장
+let speakerAliases  = [];     // [{ orig, alias }]
 
 // 자막 자동 켜기
 let autoEnableInProgress   = false;
@@ -98,8 +100,16 @@ const _elementCache = new Map();
 // ========================
 chrome.runtime.onMessage.addListener(handleMessage);
 // 자동 저장 설정 로드
-chrome.storage.sync.get({ autoSaveEnabled: true }, (r) => {
+chrome.storage.sync.get({ autoSaveEnabled: true, autoSaveOnEnd: false, speakerAliases: [] }, (r) => {
   autoSaveEnabled = r.autoSaveEnabled;
+  autoSaveOnEnd   = r.autoSaveOnEnd;
+  speakerAliases  = r.speakerAliases || [];
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync') return;
+  if (changes.autoSaveEnabled) autoSaveEnabled = changes.autoSaveEnabled.newValue;
+  if (changes.autoSaveOnEnd) autoSaveOnEnd = changes.autoSaveOnEnd.newValue;
+  if (changes.speakerAliases) speakerAliases = changes.speakerAliases.newValue || [];
 });
 scheduleTitleDetection();
 observeForCaptionsContainer();
@@ -136,6 +146,14 @@ function getCachedElement(selector, ttl = 5000) {
   const el = document.querySelector(selector);
   if (el) _elementCache.set(selector, { el, ts: now });
   return el;
+}
+
+function applySpeakerAlias(name) {
+  const normalized = String(name || '').trim();
+  const matched = speakerAliases.find(alias =>
+    alias?.orig?.trim() && alias.orig.trim().toLowerCase() === normalized.toLowerCase()
+  );
+  return matched?.alias?.trim() || normalized;
 }
 
 // ========================
@@ -278,7 +296,7 @@ function processCaptions() {
     const textEl   = row.querySelector(SELECTORS.CAPTION_TEXT);
     if (!authorEl || !textEl) return;
 
-    const name = (authorEl.innerText || authorEl.textContent || '').trim();
+    const name = applySpeakerAlias(authorEl.innerText || authorEl.textContent || '');
     const text = (textEl.innerText   || textEl.textContent   || '').trim();
     if (!name || !text) return;
 
@@ -360,15 +378,24 @@ function autoSave() {
 // 최종 저장 (통화 종료 시)
 // ========================
 function saveFinal() {
-  if (transcriptArray.length === 0) return;
-  log(`최종 저장: ${transcriptArray.length}문장`);
-  sendSaveRequest({ saveType: 'final' });
+  if (transcriptArray.length > 0 && autoSaveOnEnd) {
+    log(`최종 저장: ${transcriptArray.length}문장`);
+    sendSaveRequest({ saveType: 'final' });
+  }
   if (autoSaveTimer)  { clearInterval(autoSaveTimer);  autoSaveTimer  = null; }
   if (backupInterval) { clearInterval(backupInterval); backupInterval = null; }
   stopAttendeeTracking();
-  saveToSessionHistory();
+  if (transcriptArray.length > 0) saveToSessionHistory();
   isCapturing = false;
   chrome.runtime.sendMessage({ message: 'update_badge_status', capturing: false }).catch(() => {});
+}
+
+function saveManual() {
+  if (transcriptArray.length === 0) return false;
+  log(`수동 저장: ${transcriptArray.length}문장`);
+  sendSaveRequest({ saveType: 'manual' });
+  saveLocalBackup();
+  return true;
 }
 
 // ========================
@@ -549,8 +576,11 @@ function handleMessage(msg, sender, sendResponse) {
       return true;
 
     case 'MANUAL_SAVE':
-      saveFinal();
-      sendResponse({ ok: true });
+      if (saveManual()) {
+        sendResponse({ ok: true });
+      } else {
+        sendResponse({ ok: false, error: '저장할 자막이 없습니다.' });
+      }
       return true;
 
     case 'SET_AUTOSAVE':

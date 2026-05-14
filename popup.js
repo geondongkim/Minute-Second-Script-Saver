@@ -27,6 +27,7 @@ let elapsedTimer     = null;
 let currentAliases   = []; // [{ orig, alias }]
 let lastAiResult     = '';
 let lastAiTitle      = ''; // 다운로드 경로용 제목
+let lastAiSourceType = 'teams';
 let refFileContent   = '';
 let refFileNames     = '';
 let vimeoPollTimer   = null;   // Vimeo 상태 폴링
@@ -138,11 +139,13 @@ function renderVimeoStatus(status) {
 
   const waitingEl    = document.getElementById('vimeoWaiting');
   const collectingEl = document.getElementById('vimeoCollecting');
+  const stoppedEl    = document.getElementById('vimeoStopped');
   const completeEl   = document.getElementById('vimeoComplete');
   const titleBlock   = document.getElementById('vimeoTitleBlock');
   const lessonEl     = document.getElementById('vimeoLessonTitle');
   const videoEl      = document.getElementById('vimeoVideoTitle');
   const statusDot    = document.getElementById('statusDot');
+  if (!waitingEl || !collectingEl || !completeEl || !titleBlock || !lessonEl || !videoEl || !statusDot) return;
 
   // 제목 표시
   if (status?.lessonTitle || status?.videoTitle) {
@@ -156,18 +159,29 @@ function renderVimeoStatus(status) {
   if (!status || status.status === 'waiting') {
     waitingEl.style.display    = 'block';
     collectingEl.style.display = 'none';
+    if (stoppedEl) stoppedEl.style.display = 'none';
     completeEl.style.display   = 'none';
     statusDot.classList.remove('active');
 
   } else if (status.status === 'collecting') {
     waitingEl.style.display    = 'none';
     collectingEl.style.display = 'block';
+    if (stoppedEl) stoppedEl.style.display = 'none';
     completeEl.style.display   = 'none';
     statusDot.classList.add('active');
+
+  } else if (status.status === 'stopped') {
+    waitingEl.style.display    = 'none';
+    collectingEl.style.display = 'none';
+    if (stoppedEl) stoppedEl.style.display = 'block';
+    completeEl.style.display   = 'none';
+    statusDot.classList.remove('active');
+    stopVimeoPoll();
 
   } else if (status.status === 'complete') {
     waitingEl.style.display    = 'none';
     collectingEl.style.display = 'none';
+    if (stoppedEl) stoppedEl.style.display = 'none';
     completeEl.style.display   = 'block';
     statusDot.classList.remove('active');
 
@@ -175,6 +189,25 @@ function renderVimeoStatus(status) {
     document.getElementById('vimeoDurationChip').textContent = formatDuration(status.duration ?? 0);
     stopVimeoPoll();
   }
+}
+
+function sendRuntimeMessage(message) {
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage(message, resp => {
+      resolve(chrome.runtime.lastError ? null : resp);
+    });
+  });
+}
+
+async function sendVimeoFrameCommand(tabId, payload) {
+  let directResp = null;
+  try {
+    directResp = await chrome.tabs.sendMessage(tabId, payload);
+    if (directResp?.ok) return directResp;
+  } catch { /* Vimeo iframe에서만 content script가 동작할 수 있음 */ }
+
+  const relayResp = await sendRuntimeMessage({ message: 'relay_to_frames', tabId, payload });
+  return relayResp || directResp || { ok: false, error: 'Vimeo 프레임에 연결하지 못했습니다.' };
 }
 
 function startVimeoPoll(tabId) {
@@ -245,10 +278,11 @@ function sanitizeFilenameSimple(str) {
 }
 
 // Vimeo 재수집
-document.getElementById('vimeoRecollectBtn')?.addEventListener('click', async () => {
+async function handleVimeoRecollect() {
   const fb  = document.getElementById('vimeoFeedback');
-  const btn = document.getElementById('vimeoRecollectBtn');
-  btn.disabled = true;
+  const buttons = [document.getElementById('vimeoRecollectBtn'), document.getElementById('vimeoStoppedRecollectBtn')]
+    .filter(Boolean);
+  buttons.forEach(btn => { btn.disabled = true; });
   fb.textContent = '🔄 재수집 중…';
 
   try {
@@ -256,35 +290,54 @@ document.getElementById('vimeoRecollectBtn')?.addEventListener('click', async ()
     if (!tab) throw new Error('탭을 찾을 수 없습니다');
 
     // 1. service worker에 status 초기화 요청
-    await new Promise(resolve => {
-      chrome.runtime.sendMessage({ message: 'reset_vimeo_status', tabId: tab.id }, () => resolve());
-    });
+    await sendRuntimeMessage({ message: 'reset_vimeo_status', tabId: tab.id });
 
     // 2. content script에 재수집 메시지 (Vimeo iframe 포함 전체 프레임 브로드캐스트)
-    let ok = false;
-    try {
-      resp = await chrome.tabs.sendMessage(tab.id, { type: 'VIMEO_RECOLLECT' });
-      ok = resp?.ok;
-    } catch { /* 메인 프레임에 content script 없음 — 정상 */ }
-
-    if (!ok) {
-      // service worker를 통해 tabId로 relay (iframe 포함)
-      chrome.runtime.sendMessage({ message: 'relay_to_frames', tabId: tab.id, payload: { type: 'VIMEO_RECOLLECT' } });
-    }
+    const resp = await sendVimeoFrameCommand(tab.id, { type: 'VIMEO_RECOLLECT' });
 
     if (resp?.error) {
       fb.textContent = '⚠️ ' + resp.error;
     } else {
       fb.textContent = '🔄 재수집 시작됨';
       // 완료 상태 숨기고 수집중으로 전환 후 폴링 재시작
-      renderVimeoStatus({ ...currentVimeoStatus, status: 'collecting' });
+      renderVimeoStatus({ ...(currentVimeoStatus || {}), status: 'collecting' });
       startVimeoPoll(tab.id);
     }
   } catch (e) {
     fb.textContent = '❌ ' + e.message;
   } finally {
-    btn.disabled = false;
+    buttons.forEach(btn => { btn.disabled = false; });
     setTimeout(() => { if (fb.textContent.startsWith('🔄')) fb.textContent = ''; }, 4000);
+  }
+}
+
+document.getElementById('vimeoRecollectBtn')?.addEventListener('click', handleVimeoRecollect);
+document.getElementById('vimeoStoppedRecollectBtn')?.addEventListener('click', handleVimeoRecollect);
+
+document.getElementById('vimeoStopBtn')?.addEventListener('click', async () => {
+  const fb  = document.getElementById('vimeoFeedback');
+  const btn = document.getElementById('vimeoStopBtn');
+  btn.disabled = true;
+  fb.textContent = '⏹ 수집 중단 중…';
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) throw new Error('탭을 찾을 수 없습니다');
+
+    const resp = await sendVimeoFrameCommand(tab.id, { type: 'VIMEO_STOP_COLLECTION' });
+    await sendRuntimeMessage({ message: 'stop_vimeo_status', tabId: tab.id });
+
+    if (resp?.error) {
+      fb.textContent = '⚠️ ' + resp.error;
+    } else {
+      fb.textContent = '⏹ 수집 중단됨';
+    }
+    renderVimeoStatus({ ...(currentVimeoStatus || {}), status: 'stopped' });
+  } catch (e) {
+    fb.textContent = '❌ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { if (fb.textContent.startsWith('⏹')) fb.textContent = ''; }, 3000);
   }
 });
 
@@ -347,7 +400,8 @@ document.getElementById('saveNowBtn').addEventListener('click', async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) throw new Error('탭을 찾을 수 없습니다');
-    await chrome.tabs.sendMessage(tab.id, { type: 'MANUAL_SAVE' });
+    const resp = await chrome.tabs.sendMessage(tab.id, { type: 'MANUAL_SAVE' });
+    if (resp?.ok === false) throw new Error(resp.error || '저장 실패');
     setFeedback('capture', '✅ 저장 완료');
   } catch (e) {
     setFeedback('capture', '❌ ' + e.message, true);
@@ -474,10 +528,11 @@ async function loadAiSettings() {
   document.getElementById('openaiModel').value     = c.openaiModel || 'gpt-5.4-mini';
   updateProviderSections(c.provider || 'gemini');
 
-  const { popup_ai_result: saved = '', popup_ai_title: savedTitle = '' } = await chrome.storage.local.get(['popup_ai_result', 'popup_ai_title']);
+  const { popup_ai_result: saved = '', popup_ai_title: savedTitle = '', popup_ai_source_type: savedSource = 'teams' } = await chrome.storage.local.get(['popup_ai_result', 'popup_ai_title', 'popup_ai_source_type']);
   if (saved) {
     lastAiResult = saved;
     lastAiTitle  = savedTitle;
+    lastAiSourceType = savedSource;
     const resultEl = document.getElementById('aiResult');
     resultEl.className = 'ai-result';
     resultEl.textContent = saved;
@@ -603,13 +658,23 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
   try {
     // 현재 자막 가져오기
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    let entries = [], meetingTitle = '회의';
+    let entries = [], meetingTitle = '회의', sourceType = 'teams';
     if (tab?.url?.match(/teams\.(microsoft\.com|cloud\.microsoft|live\.com)/)) {
       try {
         const t = await chrome.tabs.sendMessage(tab.id, { type: 'GET_TRANSCRIPT' });
         entries      = t.entries || [];
         meetingTitle = t.meetingTitle || '회의';
       } catch {}
+    } else if (tab?.url?.match(/academy\.actibaeum\.com|player\.vimeo\.com/)) {
+      sourceType = 'vimeo';
+      const status = currentVimeoStatus || await getVimeoStatus(tab.id);
+      if (status?.sessionId) {
+        const key = `vimeo_${status.sessionId}_cues`;
+        const result = await chrome.storage.local.get(key);
+        const cues = result[key] || [];
+        entries = cues.map(c => ({ time: formatCueTime(c.start), text: c.text, name: status.videoTitle || 'Vimeo' }));
+        meetingTitle = status.title || status.videoTitle || 'Vimeo 강의';
+      }
     }
     // 백업에서 시도
     if (!entries.length) {
@@ -617,6 +682,7 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
       if (backup.transcriptBackup?.transcript?.length) {
         entries      = backup.transcriptBackup.transcript;
         meetingTitle = backup.transcriptBackup.meetingTitle || '회의';
+        sourceType   = 'teams';
       }
     }
     if (!entries.length) throw new Error('자막 데이터가 없습니다. 회의 중에 시도하세요.');
@@ -632,7 +698,9 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
     const extraPrompt = document.getElementById('additionalPromptInput').value.trim();
     if (extraPrompt) basePrompt += `\n\n추가 지시사항: ${extraPrompt}`;
 
-    const transcriptText = entries.map(e => `[${e.time}] ${e.name}: ${e.text}`).join('\n');
+    const transcriptText = sourceType === 'vimeo'
+      ? entries.map(e => `[${e.time}] ${e.text}`).join('\n')
+      : entries.map(e => `[${e.time}] ${e.name}: ${e.text}`).join('\n');
     const refSection = refFileContent.trim()
       ? `\n\n참고자료 (${refFileNames}):\n${'-'.repeat(36)}\n${refFileContent}\n${'-'.repeat(36)}`
       : '';
@@ -644,7 +712,8 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
 
     lastAiResult = result;
     lastAiTitle  = meetingTitle;
-    chrome.storage.local.set({ popup_ai_result: result, popup_ai_title: meetingTitle });
+    lastAiSourceType = sourceType;
+    chrome.storage.local.set({ popup_ai_result: result, popup_ai_title: meetingTitle, popup_ai_source_type: sourceType });
     resultEl.className = 'ai-result';
     resultEl.textContent = result;
     setFeedback('ai', '✅ 요약 완료');
@@ -709,11 +778,11 @@ document.getElementById('aiCopyBtn').addEventListener('click', async () => {
 document.getElementById('aiDownloadBtn').addEventListener('click', () => {
   if (!lastAiResult) return;
   const safe = sanitizeFilenameSimple(lastAiTitle || '요약');
-  const date = new Date().toLocaleDateString('ko-KR').replace(/\./g, '').replace(/\s+/g, '-');
   const dataUrl = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(lastAiResult);
+  const srcFolder = lastAiSourceType === 'vimeo' ? 'vimeo' : 'teams';
   chrome.downloads.download({
     url:      dataUrl,
-    filename: `teams-captions/teams/${safe}/summary-${safe}.md`,
+    filename: `teams-captions/${srcFolder}/${safe}/summary-${safe}.md`,
     saveAs:   false,
   });
   setFeedback('ai', '✅ 다운로드 시작');

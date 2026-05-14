@@ -38,6 +38,10 @@ let activeTrack    = null;
 let ccObserver     = null;
 let retryTimer     = null;
 let videoTitle     = null;  // iframe document.title에서 추출
+let collectionStopped = false;
+let collectionId   = makeCollectionId();
+let firstCueHandler = null;
+let firstCueRetryTimer = null;
 
 const liveCueIds   = new Set();  // 중복 방지
 
@@ -45,11 +49,14 @@ const liveCueIds   = new Set();  // 중복 방지
 // 유틸
 // ========================
 function cueToEntry(cue) {
+  const start = +cue.startTime.toFixed(3);
+  const end = +cue.endTime.toFixed(3);
+  const text = cue.text.replace(/\n/g, ' ').trim();
   return {
-    id:    cue.id,
-    start: +cue.startTime.toFixed(3),
-    end:   +cue.endTime.toFixed(3),
-    text:  cue.text.replace(/\n/g, ' ').trim(),
+    id:    cue.id || `${start}-${end}-${text.slice(0, 24)}`,
+    start,
+    end,
+    text,
   };
 }
 
@@ -57,11 +64,26 @@ function safeMessage(payload) {
   try { chrome.runtime.sendMessage(payload); } catch { /* extension context 없음 */ }
 }
 
+function makeCollectionId() {
+  return `vimeo_collection_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function cleanupCueLoadWaiter() {
+  if (firstCueHandler && activeTrack) {
+    activeTrack.removeEventListener('cuechange', firstCueHandler);
+  }
+  firstCueHandler = null;
+  if (firstCueRetryTimer) {
+    clearTimeout(firstCueRetryTimer);
+    firstCueRetryTimer = null;
+  }
+}
+
 // ========================
 // 1. 일괄 수집 (TextTrack cues 전체)
 // ========================
 function sendBatch() {
-  if (batchSent || !activeTrack?.cues?.length) return;
+  if (collectionStopped || batchSent || !activeTrack?.cues?.length) return;
 
   const cues = [...activeTrack.cues].map(cueToEntry);
   if (cues.length === 0) return;
@@ -77,6 +99,7 @@ function sendBatch() {
     trackLang:   activeTrack.language,
     cues,
     collectedAt: Date.now(),
+    collectionId,
   };
 
   safeMessage(payload);
@@ -87,6 +110,7 @@ function sendBatch() {
 // 2. 실시간 추적 (cuechange 이벤트)
 // ========================
 function onCueChange() {
+  if (collectionStopped) return;
   if (!activeTrack?.activeCues?.length) return;
 
   for (const cue of activeTrack.activeCues) {
@@ -102,6 +126,7 @@ function onCueChange() {
 // 3. MutationObserver — .vp-captions (CC 켜진 경우 폴백)
 // ========================
 function observeCcWindow() {
+  if (collectionStopped) return;
   if (ccObserver) return;
   const ccWindow = document.querySelector(VIMEO_SELECTORS.CC_WINDOW);
   if (!ccWindow) return;
@@ -120,7 +145,7 @@ function observeCcWindow() {
 // 초기화
 // ========================
 function init() {
-  if (isInitialized) return;
+  if (collectionStopped || isInitialized) return;
 
   videoEl = document.querySelector(VIMEO_SELECTORS.VIDEO);
   if (!videoEl) return;
@@ -147,6 +172,7 @@ function init() {
     pageUrl:    document.referrer || location.href,
     videoTitle,
     startedAt:  Date.now(),
+    collectionId,
   });
 
   // --- 일괄 수집 ---
@@ -161,18 +187,21 @@ function init() {
     }
 
     // load 이벤트가 없으므로 cuechange로 최초 감지
-    const onFirstCueChange = () => {
+    cleanupCueLoadWaiter();
+    firstCueHandler = () => {
+      if (collectionStopped) return;
       if (activeTrack.cues?.length > 0) {
-        activeTrack.removeEventListener('cuechange', onFirstCueChange);
+        cleanupCueLoadWaiter();
         sendBatch();
       }
     };
-    activeTrack.addEventListener('cuechange', onFirstCueChange);
+    activeTrack.addEventListener('cuechange', firstCueHandler);
 
     // 500ms 후 재시도 (이미 cues가 채워졌을 수 있음)
-    setTimeout(() => {
+    firstCueRetryTimer = setTimeout(() => {
+      if (collectionStopped) return;
       if (!batchSent && activeTrack.cues?.length > 0) {
-        activeTrack.removeEventListener('cuechange', onFirstCueChange);
+        cleanupCueLoadWaiter();
         sendBatch();
       }
     }, 500);
@@ -202,7 +231,7 @@ if (document.readyState === 'loading') {
 // video 요소가 늦게 로드되는 경우 재시도 (최대 10초)
 let retryCount = 0;
 retryTimer = setInterval(() => {
-  if (isInitialized || retryCount >= 20) {
+  if (collectionStopped || isInitialized || retryCount >= 20) {
     clearInterval(retryTimer);
     retryTimer = null;
     return;
@@ -212,30 +241,82 @@ retryTimer = setInterval(() => {
 }, 500);
 
 // ========================
-// 재수집 메시지 수신
+// 수집 제어
 // ========================
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.type !== 'VIMEO_RECOLLECT') return;
+function stopCollection() {
+  collectionStopped = true;
+  cleanupCueLoadWaiter();
+  if (retryTimer) {
+    clearInterval(retryTimer);
+    retryTimer = null;
+  }
+  if (ccObserver) {
+    ccObserver.disconnect();
+    ccObserver = null;
+  }
+  if (activeTrack) {
+    activeTrack.removeEventListener('cuechange', onCueChange);
+  }
+  console.log('[VimeoCaptionSaver] 수집 중단됨');
+}
 
-  // 상태 초기화 후 재수집
+function recollect() {
+  collectionStopped = false;
   batchSent = false;
   liveCueIds.clear();
+  cleanupCueLoadWaiter();
+  collectionId = makeCollectionId();
+
+  if (activeTrack) {
+    activeTrack.removeEventListener('cuechange', onCueChange);
+  }
 
   if (activeTrack && activeTrack.cues?.length > 0) {
+    safeMessage({
+      type:       'VIMEO_CAPTIONS_START',
+      sourceUrl:  location.href,
+      pageUrl:    document.referrer || location.href,
+      videoTitle,
+      startedAt:  Date.now(),
+      collectionId,
+    });
+    activeTrack.addEventListener('cuechange', onCueChange);
+    observeCcWindow();
     sendBatch();
-    sendResponse({ ok: true, cueCount: activeTrack.cues.length });
-  } else if (videoEl) {
+    return { ok: true, cueCount: activeTrack.cues.length };
+  }
+
+  if (videoEl) {
     // 트랙은 있지만 cues가 없으면 mode 강제 후 500ms 후 재시도
     isInitialized = false;
     init();
     setTimeout(() => {
-      if (!batchSent && activeTrack?.cues?.length > 0) sendBatch();
+      if (!collectionStopped && !batchSent && activeTrack?.cues?.length > 0) sendBatch();
     }, 800);
-    sendResponse({ ok: true, cueCount: 0 });
-  } else {
-    // video 요소 자체가 없으면 init부터 재시도
-    isInitialized = false;
-    init();
-    sendResponse({ ok: false, error: 'video 요소 없음 — 페이지를 새로고침하세요' });
+    return { ok: true, cueCount: 0 };
   }
+
+  // video 요소 자체가 없으면 init부터 재시도
+  isInitialized = false;
+  init();
+  return { ok: false, error: 'video 요소 없음 — 페이지를 새로고침하세요' };
+}
+
+function handleVimeoControlMessage(msg) {
+  if (msg.type === 'VIMEO_STOP_COLLECTION') {
+    stopCollection();
+    return { ok: true, stopped: true };
+  }
+  if (msg.type === 'VIMEO_RECOLLECT') {
+    return recollect();
+  }
+  return null;
+}
+
+globalThis.__vimeoCaptionSaverControl = { handleMessage: handleVimeoControlMessage };
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const result = handleVimeoControlMessage(msg);
+  if (!result) return;
+  sendResponse(result);
 });

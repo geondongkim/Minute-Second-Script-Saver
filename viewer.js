@@ -64,13 +64,7 @@ async function init() {
   document.title = viewerMeetingTitle;
   document.getElementById('viewerTitle').textContent = viewerMeetingTitle;
 
-  // Vimeo: 발화자 관련 UI 숨기기
-  if (viewerSourceType === 'vimeo') {
-    document.querySelector('[data-vtab="speaker"]')?.style.setProperty('display', 'none');
-    document.getElementById('metaSpeakers')?.closest('span').style.setProperty('display', 'none');
-    const si = document.getElementById('searchInput');
-    if (si) si.placeholder = '내용 검색…';
-  }
+  applySourceUi();
 
   if (captionsToView.length) renderAll(captionsToView);
   await loadAiConfig();
@@ -104,9 +98,36 @@ function renderAll(entries) {
   updateMeta();
 }
 
+function applySourceUi() {
+  const isVimeo = viewerSourceType === 'vimeo';
+  const speakerTab = document.querySelector('[data-vtab="speaker"]');
+  const speakerMeta = document.getElementById('metaSpeakers')?.closest('span');
+  const searchInput = document.getElementById('searchInput');
+
+  if (speakerTab) speakerTab.style.display = isVimeo ? 'none' : '';
+  if (speakerMeta) speakerMeta.style.display = isVimeo ? 'none' : '';
+  if (searchInput) searchInput.placeholder = isVimeo ? '내용 검색…' : '검색 (이름 또는 내용)…';
+
+  if (isVimeo && document.querySelector('.vtab[data-vtab="speaker"]')?.classList.contains('active')) {
+    switchToTranscriptTab();
+  }
+}
+
+function switchToTranscriptTab() {
+  document.querySelectorAll('.vtab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.vtab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('.vtab[data-vtab="transcript"]').classList.add('active');
+  document.getElementById('vpane-transcript').classList.add('active');
+}
+
 function renderSpeakerFilters() {
-  if (viewerSourceType === 'vimeo') return;
   const container = document.getElementById('speakerFilters');
+  if (viewerSourceType === 'vimeo') {
+    container.innerHTML = '';
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'flex';
   container.innerHTML = '';
 
   const allChip = document.createElement('button');
@@ -336,27 +357,56 @@ document.getElementById('historyModal').addEventListener('click', e => {
 });
 
 async function loadSessionList() {
-  const { session_index = [] } = await chrome.storage.local.get('session_index');
+  const [{ session_index = [] }, { vimeo_sessions = [] }] = await Promise.all([
+    chrome.storage.local.get('session_index'),
+    chrome.storage.local.get('vimeo_sessions'),
+  ]);
   const listEl = document.getElementById('sessionList');
   listEl.innerHTML = '';
 
-  if (!session_index.length) {
+  if (!session_index.length && !vimeo_sessions.length) {
     listEl.innerHTML = '<div class="session-empty">저장된 세션이 없습니다.</div>';
     return;
   }
 
-  session_index.slice()
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    .forEach(meta => {
+  if (session_index.length) {
+    const header = document.createElement('div');
+    header.className = 'session-section-label';
+    header.textContent = '📋 Teams 회의';
+    listEl.appendChild(header);
+
+    session_index.slice()
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .forEach(meta => {
+        const div = document.createElement('div');
+        div.className = 'session-item teams';
+        div.innerHTML = `
+          <div class="s-title">${escapeHtml(meta.title)}</div>
+          <div class="s-meta">${meta.date} · ${meta.captionCount}문장 · ${meta.attendeeCount || meta.speakers?.length || 0}명 참석</div>
+        `;
+        div.addEventListener('click', () => loadSession(meta));
+        listEl.appendChild(div);
+      });
+  }
+
+  if (vimeo_sessions.length) {
+    const header = document.createElement('div');
+    header.className = 'session-section-label';
+    header.textContent = '🎬 Vimeo 강의';
+    listEl.appendChild(header);
+
+    vimeo_sessions.forEach(meta => {
       const div = document.createElement('div');
-      div.className = 'session-item';
+      div.className = 'session-item vimeo';
+      const duration = meta.duration ? ` · ${formatDuration(meta.duration)}` : '';
       div.innerHTML = `
         <div class="s-title">${escapeHtml(meta.title)}</div>
-        <div class="s-meta">${meta.date} · ${meta.captionCount}문장 · ${meta.attendeeCount || meta.speakers?.length || 0}명 참석</div>
+        <div class="s-meta">${meta.date} · ${meta.cueCount}개 자막${duration}</div>
       `;
-      div.addEventListener('click', () => loadSession(meta));
+      div.addEventListener('click', () => loadVimeoSession(meta));
       listEl.appendChild(div);
     });
+  }
 }
 
 async function loadSession(meta) {
@@ -365,6 +415,8 @@ async function loadSession(meta) {
   const chunks = await chrome.storage.local.get(keys);
   const entries = keys.flatMap(k => chunks[k] || []);
 
+  viewerSourceType = 'teams';
+  viewerTitleStr = meta.title;
   document.title = meta.title;
   document.getElementById('viewerTitle').textContent = meta.title;
   document.getElementById('liveBadge').classList.remove('visible');
@@ -372,13 +424,43 @@ async function loadSession(meta) {
   activeSpeaker = 'all';
   searchTerm    = '';
   document.getElementById('searchInput').value = '';
+  lastAiResult = '';
+  sessionStorage.removeItem('viewer_ai_result');
+  hideSummary();
+  applySourceUi();
 
   // 원문 탭으로 전환
-  document.querySelectorAll('.vtab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.vtab-pane').forEach(p => p.classList.remove('active'));
-  document.querySelector('.vtab[data-vtab="transcript"]').classList.add('active');
-  document.getElementById('vpane-transcript').classList.add('active');
+  switchToTranscriptTab();
 
+  renderAll(entries);
+}
+
+async function loadVimeoSession(meta) {
+  document.getElementById('historyModal').classList.remove('open');
+  const key = `vimeo_${meta.id}_cues`;
+  const result = await chrome.storage.local.get(key);
+  const cues = result[key] || [];
+  const entries = cues.map(c => ({
+    id:   c.id,
+    name: meta.trackLabel || '자막',
+    text: c.text,
+    time: formatCueTime(c.start),
+  }));
+
+  viewerSourceType = 'vimeo';
+  viewerTitleStr = meta.title;
+  document.title = meta.title;
+  document.getElementById('viewerTitle').textContent = meta.title;
+  document.getElementById('liveBadge').classList.remove('visible');
+  isLive = false;
+  activeSpeaker = 'all';
+  searchTerm = '';
+  document.getElementById('searchInput').value = '';
+  lastAiResult = '';
+  sessionStorage.removeItem('viewer_ai_result');
+  hideSummary();
+  applySourceUi();
+  switchToTranscriptTab();
   renderAll(entries);
 }
 
@@ -784,6 +866,21 @@ function escapeHtml(str) {
 
 function sanitizeFilename(name) {
   return name.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').substring(0, 60);
+}
+
+function formatCueTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function formatDuration(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  if (h > 0) return `${h}시간 ${m}분`;
+  if (m > 0) return `${m}분 ${s}초`;
+  return `${s}초`;
 }
 
 // ============================================================

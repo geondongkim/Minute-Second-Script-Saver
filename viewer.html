@@ -436,6 +436,9 @@
       transition: background .15s;
     }
     .session-item:hover  { background: var(--border); }
+    .session-item.teams  { border-left: 3px solid var(--blue); }
+    .session-item.vimeo  { border-left: 3px solid #fab387; }
+    .session-item.vimeo .s-title { color: #fab387; }
     .session-item .s-title {
       font-size: 13px;
       font-weight: 600;
@@ -445,6 +448,19 @@
       text-overflow: ellipsis;
     }
     .session-item .s-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .session-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin: 10px 0 7px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .session-section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .session-section-label:first-child { margin-top: 0; }
     .session-empty { text-align: center; color: var(--muted); padding: 20px; font-size: 13px; }
   </style>
 </head>
