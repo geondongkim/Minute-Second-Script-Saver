@@ -37,6 +37,7 @@ let videoEl        = null;
 let activeTrack    = null;
 let ccObserver     = null;
 let retryTimer     = null;
+let videoTitle     = null;  // iframe document.title에서 추출
 
 const liveCueIds   = new Set();  // 중복 방지
 
@@ -71,6 +72,7 @@ function sendBatch() {
     type:        'VIMEO_CAPTIONS_BATCH',
     sourceUrl:   location.href,
     pageUrl:     document.referrer || location.href,
+    videoTitle,
     trackLabel:  activeTrack.label,
     trackLang:   activeTrack.language,
     cues,
@@ -134,6 +136,18 @@ function init() {
     clearInterval(retryTimer);
     retryTimer = null;
   }
+
+  // 영상 제목 추출 ("02_ SC900강의(2)_v.2 from 김승준 on Vimeo" → "02_ SC900강의(2)_v.2")
+  videoTitle = document.title.replace(/\s+from\s+.+\s+on\s+Vimeo$/i, '').trim() || null;
+
+  // 수집 시작 알림 (popup 실시간 상태 표시용)
+  safeMessage({
+    type:       'VIMEO_CAPTIONS_START',
+    sourceUrl:  location.href,
+    pageUrl:    document.referrer || location.href,
+    videoTitle,
+    startedAt:  Date.now(),
+  });
 
   // --- 일괄 수집 ---
   if (activeTrack.cues && activeTrack.cues.length > 0) {

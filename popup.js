@@ -28,6 +28,8 @@ let currentAliases   = []; // [{ orig, alias }]
 let lastAiResult     = '';
 let refFileContent   = '';
 let refFileNames     = '';
+let vimeoPollTimer   = null;   // Vimeo 상태 폴링
+let currentVimeoStatus = null; // 현재 Vimeo 수집 상태
 
 if (typeof pdfjsLib !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
@@ -58,7 +60,7 @@ async function init() {
 
   // Vimeo / academy 강의 페이지 감지
   if (tab?.url?.match(/academy\.actibaeum\.com|player\.vimeo\.com/)) {
-    await showVimeoMode();
+    await showVimeoMode(tab);
     loadAiSettings();
     return;
   }
@@ -101,27 +103,142 @@ function showIdle(msg) {
 }
 
 // ========================
-// Vimeo 탭 전용 상태 표시
+// Vimeo 탭 전용 UI
 // ========================
-async function showVimeoMode() {
-  const idleEl = document.getElementById('idleState');
-  idleEl.style.display = 'block';
+async function showVimeoMode(tab) {
+  // 기본 상태 숨김
+  document.getElementById('idleState').style.display    = 'none';
   document.getElementById('captureState').style.display = 'none';
+  document.getElementById('vimeoCaptureState').style.display = 'block';
   document.getElementById('statusDot').classList.remove('active');
 
-  const { vimeo_sessions = [] } = await chrome.storage.local.get('vimeo_sessions');
-  const latest = vimeo_sessions[0];
+  // 현재 상태 조회 후 렌더링
+  const status = await getVimeoStatus(tab.id);
+  renderVimeoStatus(status);
 
-  let html = '🎬 <strong>Vimeo 강의 페이지</strong>가 감지되었습니다.<br>'
-           + '페이지 로드 시 자막이 자동으로 수집됩니다.';
+  // 폴링 시작 (완료 전까지 1초 간격)
+  if (!status || status.status !== 'complete') {
+    startVimeoPoll(tab.id);
+  }
+}
 
-  if (latest) {
-    const dur = latest.duration ? ' · ' + formatDuration(latest.duration) : '';
-    html += `<br><br>마지막 수집:<br><strong>${escapeHtml(latest.title)}</strong>`
-          + `<br>${latest.date} · ${latest.cueCount}개 큐${dur}`;
+async function getVimeoStatus(tabId) {
+  return new Promise(resolve => {
+    try {
+      chrome.runtime.sendMessage({ message: 'get_vimeo_status', tabId }, resp => {
+        resolve(chrome.runtime.lastError ? null : (resp?.status ?? null));
+      });
+    } catch { resolve(null); }
+  });
+}
+
+function renderVimeoStatus(status) {
+  currentVimeoStatus = status;
+
+  const waitingEl    = document.getElementById('vimeoWaiting');
+  const collectingEl = document.getElementById('vimeoCollecting');
+  const completeEl   = document.getElementById('vimeoComplete');
+  const titleBlock   = document.getElementById('vimeoTitleBlock');
+  const lessonEl     = document.getElementById('vimeoLessonTitle');
+  const videoEl      = document.getElementById('vimeoVideoTitle');
+  const statusDot    = document.getElementById('statusDot');
+
+  // 제목 표시
+  if (status?.lessonTitle || status?.videoTitle) {
+    titleBlock.style.display = 'block';
+    lessonEl.textContent = status.lessonTitle ? `📚 ${status.lessonTitle}` : '';
+    videoEl.textContent  = status.videoTitle  ?? '';
+  } else {
+    titleBlock.style.display = 'none';
   }
 
-  idleEl.innerHTML = html;
+  if (!status || status.status === 'waiting') {
+    waitingEl.style.display    = 'block';
+    collectingEl.style.display = 'none';
+    completeEl.style.display   = 'none';
+    statusDot.classList.remove('active');
+
+  } else if (status.status === 'collecting') {
+    waitingEl.style.display    = 'none';
+    collectingEl.style.display = 'block';
+    completeEl.style.display   = 'none';
+    statusDot.classList.add('active');
+
+  } else if (status.status === 'complete') {
+    waitingEl.style.display    = 'none';
+    collectingEl.style.display = 'none';
+    completeEl.style.display   = 'block';
+    statusDot.classList.remove('active');
+
+    document.getElementById('vimeoCueCount').textContent = (status.cueCount ?? 0).toLocaleString();
+    document.getElementById('vimeoDurationChip').textContent = formatDuration(status.duration ?? 0);
+    stopVimeoPoll();
+  }
+}
+
+function startVimeoPoll(tabId) {
+  stopVimeoPoll();
+  vimeoPollTimer = setInterval(async () => {
+    const status = await getVimeoStatus(tabId);
+    renderVimeoStatus(status);
+  }, 1000);
+}
+
+function stopVimeoPoll() {
+  if (vimeoPollTimer) { clearInterval(vimeoPollTimer); vimeoPollTimer = null; }
+}
+
+// Vimeo 뷰어 열기
+document.getElementById('vimeoViewerBtn')?.addEventListener('click', async () => {
+  if (!currentVimeoStatus?.sessionId) return;
+  const meta = currentVimeoStatus;
+  const key  = `vimeo_${meta.sessionId}_cues`;
+  try {
+    const result = await chrome.storage.local.get(key);
+    const cues = result[key] || [];
+    const entries = cues.map(c => ({
+      id:   c.id,
+      name: meta.videoTitle || '자막',
+      text: c.text,
+      time: formatCueTime(c.start),
+    }));
+    await chrome.storage.local.set({ captionsToView: entries, viewerMeetingTitle: meta.title || meta.videoTitle });
+    chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
+    window.close();
+  } catch (e) {
+    document.getElementById('vimeoFeedback').textContent = '❌ ' + e.message;
+  }
+});
+
+// Vimeo TXT 다운로드
+document.getElementById('vimeoDownloadBtn')?.addEventListener('click', async () => {
+  if (!currentVimeoStatus?.sessionId) return;
+  const meta = currentVimeoStatus;
+  const key  = `vimeo_${meta.sessionId}_cues`;
+  try {
+    const result = await chrome.storage.local.get(key);
+    const cues = result[key] || [];
+    const lines = [
+      `# ${meta.title || meta.videoTitle || 'Vimeo 강의'}`,
+      `날짜: ${meta.date} · 자막 ${meta.cueCount}개 · ${formatDuration(meta.duration ?? 0)}`,
+      '',
+      ...cues.map(c => `[${formatCueTime(c.start)}] ${c.text}`),
+    ].join('\n');
+
+    const safe = sanitizeFilenameSimple(meta.title || 'vimeo');
+    const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(lines);
+    chrome.downloads.download({ url: dataUrl, filename: `teams-captions/vimeo/${safe}.txt`, saveAs: false });
+    window.close();
+  } catch (e) {
+    document.getElementById('vimeoFeedback').textContent = '❌ ' + e.message;
+  }
+});
+
+function sanitizeFilenameSimple(str) {
+  return (str || 'vimeo')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .substring(0, 60);
 }
 
 function showCapture(status) {
@@ -571,7 +688,7 @@ async function loadHistory() {
     session_index.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       .forEach(meta => {
         const li = document.createElement('li');
-        li.className = 'history-item';
+        li.className = 'history-item teams';
         const speakers = (meta.speakers || []).slice(0, 3).join(', ');
         li.innerHTML = `
           <div class="h-title">${escapeHtml(meta.title)}</div>
@@ -591,7 +708,7 @@ async function loadHistory() {
 
     vimeo_sessions.forEach(meta => {
       const li = document.createElement('li');
-      li.className = 'history-item';
+      li.className = 'history-item vimeo';
       const dur = meta.duration ? ' · ' + formatDuration(meta.duration) : '';
       li.innerHTML = `
         <div class="h-title">${escapeHtml(meta.title)}</div>

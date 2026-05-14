@@ -219,13 +219,70 @@
     .history-item:hover { background: #45475a; }
     .history-item .h-title { font-size: 12px; font-weight: 600; color: #cba6f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .history-item .h-meta { font-size: 10px; color: #6c7086; margin-top: 3px; }
+    .history-item.teams  { border-left: 3px solid #89b4fa; }
+    .history-item.vimeo  { border-left: 3px solid #fab387; }
+    .history-item.vimeo .h-title { color: #fab387; }
     .history-empty { text-align: center; color: #45475a; font-size: 12px; padding: 28px 0; }
     .history-section-label {
       font-size: 10px; font-weight: 700; color: #6c7086;
       text-transform: uppercase; letter-spacing: .08em;
-      margin: 10px 0 6px; padding: 0 2px;
+      margin: 10px 0 6px; padding: 2px 4px;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .history-section-label::after {
+      content: ''; flex: 1; height: 1px; background: #313244;
     }
     .history-section-label:first-child { margin-top: 0; }
+
+    /* ── Vimeo 캡처 상태 ── */
+    .vimeo-capture {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .vimeo-capture-header {
+      display: flex; align-items: center; gap: 8px;
+      background: linear-gradient(135deg, #2a1f3d 0%, #1e1e2e 100%);
+      border: 1px solid #45475a; border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .vimeo-capture-icon { font-size: 20px; line-height: 1; }
+    .vimeo-capture-label { font-size: 11px; font-weight: 700; color: #fab387; text-transform: uppercase; letter-spacing: .06em; }
+    .vimeo-title-block {
+      background: #313244; border-radius: 8px; padding: 10px 12px;
+    }
+    .vimeo-lesson-title {
+      font-size: 11px; color: #6c7086; margin-bottom: 3px;
+    }
+    .vimeo-video-title {
+      font-size: 13px; font-weight: 600; color: #cdd6f4;
+      word-break: break-all; line-height: 1.4;
+    }
+    .vimeo-status-block {
+      background: #313244; border-radius: 8px; padding: 12px;
+      text-align: center;
+    }
+    .vimeo-status-waiting {
+      color: #6c7086; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .vimeo-status-collecting {
+      color: #89b4fa; font-size: 13px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+    }
+    .vimeo-status-hint {
+      font-size: 10px; color: #45475a; margin-top: 5px;
+    }
+    .vimeo-complete-badge {
+      font-size: 15px; font-weight: 700; color: #a6e3a1;
+      margin-bottom: 8px;
+    }
+    .vimeo-stats-chips {
+      display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+      margin-bottom: 2px;
+    }
+    .stat-chip {
+      background: #45475a; border-radius: 20px;
+      padding: 3px 10px; font-size: 11px; color: #cdd6f4; font-weight: 600;
+    }
 
     /* ── 피드백 / 공통 ── */
     .feedback { font-size: 11px; text-align: center; min-height: 18px; margin-top: 8px; color: #a6e3a1; }
@@ -323,6 +380,55 @@
       </div>
 
       <div class="feedback" id="feedback"></div>
+    </div>
+
+    <!-- Vimeo 자막 수집 상태 -->
+    <div id="vimeoCaptureState" style="display:none" class="vimeo-capture">
+
+      <div class="vimeo-capture-header">
+        <span class="vimeo-capture-icon">🎬</span>
+        <div>
+          <div class="vimeo-capture-label">Vimeo 강의 자막 수집</div>
+        </div>
+      </div>
+
+      <!-- 제목 블록 -->
+      <div class="vimeo-title-block" id="vimeoTitleBlock" style="display:none">
+        <div class="vimeo-lesson-title" id="vimeoLessonTitle"></div>
+        <div class="vimeo-video-title"  id="vimeoVideoTitle"></div>
+      </div>
+
+      <!-- 상태: 대기 -->
+      <div class="vimeo-status-block" id="vimeoWaiting">
+        <div class="vimeo-status-waiting">
+          <span class="spinner"></span> 수집 대기 중…
+        </div>
+        <div class="vimeo-status-hint">강의 페이지가 로드되면 자동으로 시작됩니다</div>
+      </div>
+
+      <!-- 상태: 수집 중 -->
+      <div class="vimeo-status-block" id="vimeoCollecting" style="display:none">
+        <div class="vimeo-status-collecting">
+          <span class="spinner"></span>
+          <span>자막 수집 중…</span>
+        </div>
+        <div class="vimeo-status-hint">페이지를 닫지 마세요</div>
+      </div>
+
+      <!-- 상태: 완료 -->
+      <div class="vimeo-status-block" id="vimeoComplete" style="display:none">
+        <div class="vimeo-complete-badge">✅ 수집 완료</div>
+        <div class="vimeo-stats-chips">
+          <span class="stat-chip"><span id="vimeoCueCount">0</span>개 자막</span>
+          <span class="stat-chip" id="vimeoDurationChip">—</span>
+        </div>
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn btn-accent"    id="vimeoViewerBtn">📄 뷰어</button>
+          <button class="btn btn-secondary" id="vimeoDownloadBtn">↓ TXT</button>
+        </div>
+      </div>
+
+      <div class="feedback" id="vimeoFeedback"></div>
     </div>
 
   </div>
