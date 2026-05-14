@@ -244,6 +244,50 @@ function sanitizeFilenameSimple(str) {
     .substring(0, 60);
 }
 
+// Vimeo 재수집
+document.getElementById('vimeoRecollectBtn')?.addEventListener('click', async () => {
+  const fb  = document.getElementById('vimeoFeedback');
+  const btn = document.getElementById('vimeoRecollectBtn');
+  btn.disabled = true;
+  fb.textContent = '🔄 재수집 중…';
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) throw new Error('탭을 찾을 수 없습니다');
+
+    // 1. service worker에 status 초기화 요청
+    await new Promise(resolve => {
+      chrome.runtime.sendMessage({ message: 'reset_vimeo_status', tabId: tab.id }, () => resolve());
+    });
+
+    // 2. content script에 재수집 메시지 (Vimeo iframe 포함 전체 프레임 브로드캐스트)
+    let ok = false;
+    try {
+      resp = await chrome.tabs.sendMessage(tab.id, { type: 'VIMEO_RECOLLECT' });
+      ok = resp?.ok;
+    } catch { /* 메인 프레임에 content script 없음 — 정상 */ }
+
+    if (!ok) {
+      // service worker를 통해 tabId로 relay (iframe 포함)
+      chrome.runtime.sendMessage({ message: 'relay_to_frames', tabId: tab.id, payload: { type: 'VIMEO_RECOLLECT' } });
+    }
+
+    if (resp?.error) {
+      fb.textContent = '⚠️ ' + resp.error;
+    } else {
+      fb.textContent = '🔄 재수집 시작됨';
+      // 완료 상태 숨기고 수집중으로 전환 후 폴링 재시작
+      renderVimeoStatus({ ...currentVimeoStatus, status: 'collecting' });
+      startVimeoPoll(tab.id);
+    }
+  } catch (e) {
+    fb.textContent = '❌ ' + e.message;
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { if (fb.textContent.startsWith('🔄')) fb.textContent = ''; }, 4000);
+  }
+});
+
 function showCapture(status) {
   document.getElementById('idleState').style.display = 'none';
   document.getElementById('captureState').style.display = 'block';

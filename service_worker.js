@@ -144,6 +144,29 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
+      // Vimeo 재수집 요청 — status를 collecting으로 초기화
+      case 'reset_vimeo_status': {
+        const key = `vimeo_status_${msg.tabId}`;
+        const { [key]: prev } = await chrome.storage.local.get(key);
+        if (prev) {
+          await chrome.storage.local.set({
+            [key]: { ...prev, status: 'collecting', cueCount: 0, sessionId: undefined }
+          });
+        }
+        sendResponse({ ok: true });
+        break;
+      }
+
+      // Vimeo 재수집 요청 — 탭의 모든 프레임에 relay
+      case 'relay_to_frames': {
+        const { tabId: relayTabId, payload } = msg;
+        chrome.tabs.sendMessage(relayTabId, payload, { frameId: 0 }, () => chrome.runtime.lastError);
+        // allFrames 방식: content_scripts의 all_frames:true 덕분에 각 프레임이 독립 수신
+        chrome.tabs.sendMessage(relayTabId, payload, () => chrome.runtime.lastError);
+        sendResponse({ ok: true });
+        break;
+      }
+
       // live_caption_update는 뷰어가 runtime.onMessage로 직접 수신
       case 'live_caption_update':
         break;

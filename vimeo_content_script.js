@@ -210,3 +210,32 @@ retryTimer = setInterval(() => {
   init();
   retryCount++;
 }, 500);
+
+// ========================
+// 재수집 메시지 수신
+// ========================
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.type !== 'VIMEO_RECOLLECT') return;
+
+  // 상태 초기화 후 재수집
+  batchSent = false;
+  liveCueIds.clear();
+
+  if (activeTrack && activeTrack.cues?.length > 0) {
+    sendBatch();
+    sendResponse({ ok: true, cueCount: activeTrack.cues.length });
+  } else if (videoEl) {
+    // 트랙은 있지만 cues가 없으면 mode 강제 후 500ms 후 재시도
+    isInitialized = false;
+    init();
+    setTimeout(() => {
+      if (!batchSent && activeTrack?.cues?.length > 0) sendBatch();
+    }, 800);
+    sendResponse({ ok: true, cueCount: 0 });
+  } else {
+    // video 요소 자체가 없으면 init부터 재시도
+    isInitialized = false;
+    init();
+    sendResponse({ ok: false, error: 'video 요소 없음 — 페이지를 새로고침하세요' });
+  }
+});
