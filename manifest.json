@@ -25,6 +25,8 @@
     "https://teams.microsoft.com/*",
     "https://teams.cloud.microsoft/*",
     "https://teams.live.com/*",
+    "https://player.vimeo.com/*",
+    "https://academy.actibaeum.com/*",
     "https://generativelanguage.googleapis.com/*",
     "https://api.openai.com/*"
   ],
@@ -48,6 +50,14 @@
       ],
       "js": ["content_script.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://player.vimeo.com/video/*"
+      ],
+      "js": ["vimeo_content_script.js"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
 

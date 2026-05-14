@@ -42,6 +42,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
 
+    // ── Vimeo 일괄 수집 ──
+    if (msg.type === 'VIMEO_CAPTIONS_BATCH') {
+      try {
+        await handleVimeoBatch(msg);
+        sendResponse({ ok: true });
+      } catch (e) {
+        console.error('[TeamsCaptionSaverKR] Vimeo 저장 실패:', e);
+        sendResponse({ ok: false, error: e.message });
+      }
+      return;
+    }
+
+    // ── Vimeo 실시간 큐 (현재는 storage에 누적하지 않고 포워드만) ──
+    if (msg.type === 'VIMEO_CAPTION_LIVE' || msg.type === 'VIMEO_CAPTION_CC_TEXT') {
+      sendResponse({ ok: true });
+      return;
+    }
+
     switch (msg.message) {
       case 'update_badge_status':
         updateBadge(msg.capturing);
@@ -80,6 +98,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const atKey  = `${sessionId}_attendees`;
         const { [atKey]: attendeeReport = null } = await chrome.storage.local.get(atKey);
         sendResponse({ entries, meta, attendeeReport });
+        break;
+      }
+
+      // Vimeo 세션 조회
+      case 'get_vimeo_sessions': {
+        const { vimeo_sessions = [] } = await chrome.storage.local.get('vimeo_sessions');
+        sendResponse({ sessions: vimeo_sessions });
+        break;
+      }
+
+      case 'get_vimeo_transcript': {
+        const { sessionId } = msg;
+        const key = `vimeo_${sessionId}_cues`;
+        const result = await chrome.storage.local.get(key);
+        sendResponse({ cues: result[key] || [] });
         break;
       }
 
@@ -238,4 +271,59 @@ function sanitizeFilename(str) {
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
     .substring(0, 50) || 'teams-captions';
+}
+
+// ========================
+// Vimeo 배치 수집 처리
+// ========================
+async function handleVimeoBatch({ sourceUrl, pageUrl, trackLabel, trackLang, cues, collectedAt }) {
+  if (!cues?.length) return;
+
+  const sessionId = `vimeo_${collectedAt || Date.now()}`;
+
+  // 큐 저장
+  await chrome.storage.local.set({ [`vimeo_${sessionId}_cues`]: cues });
+
+  // 페이지 제목 추정 (URL 경로에서 추출)
+  let title = trackLabel || 'Vimeo 강의';
+  try {
+    const url = new URL(pageUrl || sourceUrl);
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    // /lessons/2-강/ 패턴에서 마지막 의미 있는 부분 사용
+    const lessonPart = pathParts.find(p => p.startsWith('lesson') || p.match(/^\d+/));
+    if (lessonPart) title = decodeURIComponent(lessonPart) + ' — ' + title;
+  } catch { /* URL 파싱 실패 무시 */ }
+
+  const meta = {
+    id:          sessionId,
+    title,
+    sourceUrl,
+    pageUrl:     pageUrl || sourceUrl,
+    trackLabel,
+    trackLang,
+    cueCount:    cues.length,
+    duration:    cues[cues.length - 1]?.end ?? 0,
+    collectedAt: collectedAt || Date.now(),
+    date:        new Date(collectedAt || Date.now()).toLocaleDateString('ko-KR'),
+  };
+
+  // 세션 인덱스 관리 (최대 20개, URL 중복 시 덮어쓰기)
+  const { vimeo_sessions = [] } = await chrome.storage.local.get('vimeo_sessions');
+  const existingIdx = vimeo_sessions.findIndex(s => s.sourceUrl === sourceUrl);
+
+  if (existingIdx >= 0) {
+    // 같은 URL의 기존 세션 큐 삭제 후 교체
+    await chrome.storage.local.remove(`vimeo_${vimeo_sessions[existingIdx].id}_cues`);
+    vimeo_sessions.splice(existingIdx, 1);
+  }
+
+  vimeo_sessions.unshift(meta);
+
+  if (vimeo_sessions.length > 20) {
+    const old = vimeo_sessions.pop();
+    await chrome.storage.local.remove(`vimeo_${old.id}_cues`);
+  }
+
+  await chrome.storage.local.set({ vimeo_sessions });
+  console.log(`[TeamsCaptionSaverKR] Vimeo 배치 저장 완료: ${cues.length}개 큐, "${title}"`);
 }
