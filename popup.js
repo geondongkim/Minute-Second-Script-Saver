@@ -1,5 +1,5 @@
 // ============================================================
-// Teams Captions Saver KR — Popup Script v2.0
+// Minute Second Script Saver — Popup Script v2.1
 // ============================================================
 
 // ========================
@@ -18,6 +18,8 @@ const MEETING_TYPE_PROMPTS = {
   lecture:    '다음 라이브 강의 내용을 한국어로 요약하세요. 강의 주제, 핵심 개념 설명, 주요 예시, Q&A 내용(있는 경우), 학습 포인트를 체계적으로 정리하세요.',
   custom:     '',
 };
+
+const DEFAULT_DOWNLOAD_SUBFOLDER = 'script-saver';
 
 // ========================
 // 상태
@@ -61,12 +63,12 @@ document.querySelectorAll('.tab').forEach(btn => {
 // ========================
 async function init() {
   await loadLectureToolSettings();
-  const settings = await chrome.storage.sync.get({ subfolder: 'teams-captions' });
+  const settings = await chrome.storage.sync.get({ subfolder: DEFAULT_DOWNLOAD_SUBFOLDER });
   updateSavePathDisplay(settings.subfolder);
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-  // Vimeo / academy 강의 페이지 감지
+  // 강의 페이지 감지 (현재 Vimeo/academy 지원)
   if (tab?.url?.match(/academy\.actibaeum\.com|player\.vimeo\.com/)) {
     await showVimeoMode(tab);
     loadAiSettings();
@@ -124,7 +126,7 @@ function showIdle(msg) {
 }
 
 // ========================
-// Vimeo 탭 전용 UI
+// 강의 탭 전용 UI (현재 Vimeo 지원)
 // ========================
 async function showVimeoMode(tab) {
   // 기본 상태 숨김
@@ -434,15 +436,17 @@ document.getElementById('vimeoDownloadBtn')?.addEventListener('click', async () 
     const result = await chrome.storage.local.get(key);
     const cues = result[key] || [];
     const lines = [
-      `# ${meta.title || meta.videoTitle || 'Vimeo 강의'}`,
+      `# ${meta.title || meta.videoTitle || '강의 스크립트'}`,
       `날짜: ${meta.date} · 자막 ${meta.cueCount}개 · ${formatDuration(meta.duration ?? 0)}`,
       '',
       ...cues.map(c => `[${formatCueTime(c.start)}] ${c.text}`),
     ].join('\n');
 
     const safe = sanitizeFilenameSimple(meta.title || 'vimeo');
+    const { subfolder = DEFAULT_DOWNLOAD_SUBFOLDER } = await chrome.storage.sync.get({ subfolder: DEFAULT_DOWNLOAD_SUBFOLDER });
+    const baseFolder = sanitizeFilenameSimple(subfolder || DEFAULT_DOWNLOAD_SUBFOLDER);
     const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(lines);
-    chrome.downloads.download({ url: dataUrl, filename: `teams-captions/vimeo/${safe}.txt`, saveAs: false });
+    chrome.downloads.download({ url: dataUrl, filename: `${baseFolder}/vimeo/${safe}.txt`, saveAs: false });
     const fb = document.getElementById('vimeoFeedback');
     fb.textContent = '✅ 저장됨';
     setTimeout(() => { fb.textContent = ''; }, 3000);
@@ -618,7 +622,7 @@ function updateElapsed() {
 }
 
 function updateSavePathDisplay(subfolder) {
-  document.getElementById('savePath').textContent = `다운로드/${subfolder || 'teams-captions'}/`;
+  document.getElementById('savePath').textContent = `다운로드/${subfolder || DEFAULT_DOWNLOAD_SUBFOLDER}/`;
 }
 
 // ========================
@@ -692,7 +696,7 @@ async function loadSettings() {
     autoSaveOnEnd:      false,
     trackAttendees:     false,
     saveFormat:         'md',
-    subfolder:          'teams-captions',
+    subfolder:          DEFAULT_DOWNLOAD_SUBFOLDER,
     speakerAliases:     [],
   });
   document.getElementById('autoEnableCaptionsToggle').checked = s.autoEnableCaptions;
@@ -747,7 +751,7 @@ document.getElementById('aliasAddBtn').addEventListener('click', () => {
 
 document.getElementById('settingsSaveBtn').addEventListener('click', async () => {
   const subfolder = document.getElementById('subfolderInput').value.trim()
-    .replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').substring(0, 40) || 'teams-captions';
+    .replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').substring(0, 40) || DEFAULT_DOWNLOAD_SUBFOLDER;
 
   await chrome.storage.sync.set({
     autoEnableCaptions: document.getElementById('autoEnableCaptionsToggle').checked,
@@ -920,7 +924,7 @@ document.getElementById('aiSummarizeBtn').addEventListener('click', async () => 
         const result = await chrome.storage.local.get(key);
         const cues = result[key] || [];
         entries = cues.map(c => ({ time: formatCueTime(c.start), text: c.text, name: status.videoTitle || 'Vimeo' }));
-        meetingTitle = status.title || status.videoTitle || 'Vimeo 강의';
+        meetingTitle = status.title || status.videoTitle || '강의 스크립트';
       }
     }
     // 백업에서 시도
@@ -1022,14 +1026,16 @@ document.getElementById('aiCopyBtn').addEventListener('click', async () => {
   }
 });
 
-document.getElementById('aiDownloadBtn').addEventListener('click', () => {
+document.getElementById('aiDownloadBtn').addEventListener('click', async () => {
   if (!lastAiResult) return;
   const safe = sanitizeFilenameSimple(lastAiTitle || '요약');
   const dataUrl = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(lastAiResult);
   const srcFolder = lastAiSourceType === 'vimeo' ? 'vimeo' : 'teams';
+  const { subfolder = DEFAULT_DOWNLOAD_SUBFOLDER } = await chrome.storage.sync.get({ subfolder: DEFAULT_DOWNLOAD_SUBFOLDER });
+  const baseFolder = sanitizeFilenameSimple(subfolder || DEFAULT_DOWNLOAD_SUBFOLDER);
   chrome.downloads.download({
     url:      dataUrl,
-    filename: `teams-captions/${srcFolder}/${safe}/summary-${safe}.md`,
+    filename: `${baseFolder}/${srcFolder}/${safe}/summary-${safe}.md`,
     saveAs:   false,
   });
   setFeedback('ai', '✅ 다운로드 시작');
@@ -1073,11 +1079,11 @@ async function loadHistory() {
       });
   }
 
-  // Vimeo 세션
+  // 강의 세션 (현재 Vimeo 지원)
   if (vimeo_sessions.length) {
     const hdr = document.createElement('li');
     hdr.className = 'history-section-label';
-    hdr.textContent = '🎬 Vimeo 강의';
+    hdr.textContent = '🎬 강의 스크립트';
     list.appendChild(hdr);
 
     vimeo_sessions.forEach(meta => {

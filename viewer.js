@@ -1,5 +1,5 @@
 // ============================================================
-// Teams Captions Viewer — viewer.js v3.0
+// Minute Second Script Viewer — viewer.js v3.1
 // 3탭: 원문 | 발화자별 | AI 요약 (참고파일 첨부 + PDF 지원)
 // ============================================================
 
@@ -11,6 +11,8 @@ let searchTerm      = '';
 let isLive          = false;
 let viewerSourceType = 'teams'; // 'teams' | 'vimeo'
 let viewerTitleStr   = '';       // 저장 경로용 제목
+
+const DEFAULT_DOWNLOAD_SUBFOLDER = 'script-saver';
 
 // AI 관련
 let lastAiResult    = '';
@@ -392,7 +394,7 @@ async function loadSessionList() {
   if (vimeo_sessions.length) {
     const header = document.createElement('div');
     header.className = 'session-section-label';
-    header.textContent = '🎬 Vimeo 강의';
+    header.textContent = '🎬 강의 스크립트';
     listEl.appendChild(header);
 
     vimeo_sessions.forEach(meta => {
@@ -831,15 +833,17 @@ document.getElementById('viewerCopyBtn').addEventListener('click', async () => {
   } catch { flashBtn('viewerCopyBtn', '❌ 실패'); }
 });
 
-document.getElementById('viewerSaveBtn').addEventListener('click', () => {
+document.getElementById('viewerSaveBtn').addEventListener('click', async () => {
   if (!lastAiResult) return;
   const rawTitle  = viewerTitleStr || document.getElementById('viewerTitle').textContent;
   const safe      = sanitizeFilename(rawTitle);
   const srcFolder = viewerSourceType === 'vimeo' ? 'vimeo' : 'teams';
   const dataUrl   = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(lastAiResult);
+  const { subfolder = DEFAULT_DOWNLOAD_SUBFOLDER } = await chrome.storage.sync.get({ subfolder: DEFAULT_DOWNLOAD_SUBFOLDER });
+  const baseFolder = sanitizeFilename(subfolder || DEFAULT_DOWNLOAD_SUBFOLDER) || DEFAULT_DOWNLOAD_SUBFOLDER;
   chrome.downloads.download({
     url:      dataUrl,
-    filename: `teams-captions/${srcFolder}/${safe}/summary-${safe}.md`,
+    filename: `${baseFolder}/${srcFolder}/${safe}/summary-${safe}.md`,
     saveAs:   false,
   });
   flashBtn('viewerSaveBtn', '✅ 저장됨');

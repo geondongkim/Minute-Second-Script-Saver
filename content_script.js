@@ -1,5 +1,5 @@
 // ============================================================
-// Teams Captions Saver KR — Content Script v2.0
+// Minute Second Script Saver — Teams Content Script v2.1
 // ============================================================
 // 동작:
 //   1. Teams DOM에서 자막 컨테이너가 나타나면 자동으로 캡처 시작
@@ -120,7 +120,7 @@ log('Content script v2 initialized');
 // 유틸
 // ========================
 function log(msg, ...args) {
-  console.debug('[TeamsCaptionSaverKR]', msg, ...args);
+  console.debug('[MinuteSecondScriptSaver]', msg, ...args);
 }
 
 function padTwo(n) {

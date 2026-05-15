@@ -1,5 +1,5 @@
 // ============================================================
-// Teams Captions Saver KR — Vimeo Content Script v1.0
+// Minute Second Script Saver — Vimeo Content Script v2.1
 // ============================================================
 // 대상: player.vimeo.com/video/* 프레임 (all_frames: true)
 // 역할:

@@ -1,5 +1,5 @@
 // ============================================================
-// Teams Caption Saver KR — DOM Selector Validator
+// Minute Second Script Saver — Teams DOM Selector Validator
 // ============================================================
 // 사용법:
 //   1. teams.microsoft.com 에서 회의 참여
@@ -31,7 +31,7 @@
   const inf = (msg) => console.log(`%cℹ️  ${msg}`, 'color:#2196f3');
   const warn = (msg) => console.log(`%c⚠️  ${msg}`, 'color:#ff9800');
 
-  console.group('%cTeams Caption Saver KR — DOM Validator', 'color:#6264A7;font-weight:bold;font-size:14px');
+  console.group('%cMinute Second Script Saver — DOM Validator', 'color:#6264A7;font-weight:bold;font-size:14px');
   console.log('실행 시각:', new Date().toLocaleTimeString('ko-KR'));
   console.log('URL:', location.href);
   console.log('');

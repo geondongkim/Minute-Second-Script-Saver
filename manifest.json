@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Teams Captions Saver KR",
-  "version": "2.0.0",
-  "description": "팀즈 회의 라이브 자막을 자동 캡처·저장하고, AI로 요약합니다.",
+  "name": "Minute Second Script Saver",
+  "version": "2.1.0",
+  "description": "회의와 강의 스크립트를 캡처·저장하고 AI로 요약합니다.",
 
   "icons": {
     "16": "icon.png",
@@ -39,7 +39,7 @@
   "action": {
     "default_icon": "icon.png",
     "default_popup": "popup.html",
-    "default_title": "Teams Captions Saver KR"
+    "default_title": "Minute Second Script Saver"
   },
 
   "background": {

@@ -1,5 +1,5 @@
 // ============================================================
-// Teams Captions Saver KR — Service Worker v2.0
+// Minute Second Script Saver — Service Worker v2.1
 // ============================================================
 // 역할:
 //   - SAVE_CAPTIONS: 5분 자동 저장 / 수동 저장 (overwrite)
@@ -13,6 +13,8 @@
 // ========================
 // 뱃지 관리
 // ========================
+const DEFAULT_DOWNLOAD_SUBFOLDER = 'script-saver';
+
 function updateBadge(capturing) {
   if (capturing) {
     chrome.action.setBadgeText({ text: 'ON' });
@@ -71,7 +73,7 @@ chrome.webRequest?.onBeforeRequest.addListener(
   details => {
     if (details.tabId < 0 || !isVimeoHlsUrl(details.url)) return;
     recordVimeoHlsUrl(details.tabId, details.url, 'webRequest').catch(err => {
-      console.warn('[TeamsCaptionSaverKR] HLS URL 저장 실패:', err);
+      console.warn('[MinuteSecondScriptSaver] HLS URL 저장 실패:', err);
     });
   },
   {
@@ -96,7 +98,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await handleSave(msg);
         sendResponse({ ok: true });
       } catch (e) {
-        console.error('[TeamsCaptionSaverKR] 저장 실패:', e);
+        console.error('[MinuteSecondScriptSaver] 저장 실패:', e);
         sendResponse({ ok: false, error: e.message });
       }
       return;
@@ -141,7 +143,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await handleVimeoBatch(msg, sender);
         sendResponse({ ok: true });
       } catch (e) {
-        console.error('[TeamsCaptionSaverKR] Vimeo 저장 실패:', e);
+        console.error('[MinuteSecondScriptSaver] Vimeo 저장 실패:', e);
         sendResponse({ ok: false, error: e.message });
       }
       return;
@@ -195,7 +197,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
-      // Vimeo 세션 조회
+      // 강의 세션 조회 (현재 Vimeo 저장소)
       case 'get_vimeo_sessions': {
         const { vimeo_sessions = [] } = await chrome.storage.local.get('vimeo_sessions');
         sendResponse({ sessions: vimeo_sessions });
@@ -295,8 +297,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function handleSave({ meetingTitle, sessionStart, entries, saveType }) {
   if (!entries?.length) return;
 
-  const settings  = await chrome.storage.sync.get({ subfolder: 'teams-captions', saveFormat: 'md' });
-  const subfolder = sanitizeFilename(settings.subfolder || 'teams-captions');
+  const settings  = await chrome.storage.sync.get({ subfolder: DEFAULT_DOWNLOAD_SUBFOLDER, saveFormat: 'md' });
+  const subfolder = sanitizeFilename(settings.subfolder || DEFAULT_DOWNLOAD_SUBFOLDER);
   const safeTitle = sanitizeFilename(meetingTitle || '팀즈회의');
   const startDate = sessionStart ? new Date(sessionStart) : new Date();
   const dateStr   = formatDate(startDate);
@@ -315,7 +317,7 @@ async function handleSave({ meetingTitle, sessionStart, entries, saveType }) {
   }
 
   await downloadFile(content, filename, `text/${ext === 'md' ? 'markdown' : ext}`, 'overwrite');
-  console.log(`[TeamsCaptionSaverKR] 저장 완료: ${filename} (${entries.length}문장, ${saveType})`);
+  console.log(`[MinuteSecondScriptSaver] 저장 완료: ${filename} (${entries.length}문장, ${saveType})`);
 }
 
 // ========================
@@ -412,9 +414,9 @@ async function saveSessionHistory({ transcriptArray, meetingTitle, recordingStar
 
     session_index.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     await chrome.storage.local.set({ session_index });
-    console.log('[TeamsCaptionSaverKR] 세션 히스토리 저장:', sessionId);
+    console.log('[MinuteSecondScriptSaver] 세션 히스토리 저장:', sessionId);
   } catch (e) {
-    console.error('[TeamsCaptionSaverKR] 세션 히스토리 저장 실패:', e);
+    console.error('[MinuteSecondScriptSaver] 세션 히스토리 저장 실패:', e);
   }
 }
 
@@ -435,7 +437,7 @@ function sanitizeFilename(str) {
     .replace(/\s+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
-    .substring(0, 50) || 'teams-captions';
+    .substring(0, 50) || DEFAULT_DOWNLOAD_SUBFOLDER;
 }
 
 // ========================
@@ -451,7 +453,7 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
     const result = await chrome.storage.local.get(statusKey);
     currentStatus = result[statusKey] || null;
     if (currentStatus?.status === 'stopped' && (!collectionId || currentStatus.collectionId === collectionId)) {
-      console.log('[TeamsCaptionSaverKR] 중단된 Vimeo 수집 결과 무시:', sourceUrl);
+      console.log('[MinuteSecondScriptSaver] 중단된 Vimeo 수집 결과 무시:', sourceUrl);
       return;
     }
   }
@@ -464,7 +466,7 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
   // 제목 조합: "2 강 · 02_ SC900강의(2)_v.2"
   const lessonTitle = cleanTabTitle(sender?.tab?.title);
   const titleParts = [lessonTitle, videoTitle].filter(Boolean);
-  const title = titleParts.join(' · ') || trackLabel || 'Vimeo 강의';
+  const title = titleParts.join(' · ') || trackLabel || '강의 스크립트';
 
   const duration = cues[cues.length - 1]?.end ?? 0;
 
@@ -526,7 +528,7 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
   }
 
   await chrome.storage.local.set({ vimeo_sessions });
-  console.log(`[TeamsCaptionSaverKR] Vimeo 배치 저장 완료: ${cues.length}개 큐, "${title}"`);
+  console.log(`[MinuteSecondScriptSaver] Vimeo 배치 저장 완료: ${cues.length}개 큐, "${title}"`);
 }
 
 // ========================
