@@ -32,6 +32,11 @@ let refFileContent   = '';
 let refFileNames     = '';
 let vimeoPollTimer   = null;   // Vimeo 상태 폴링
 let currentVimeoStatus = null; // 현재 Vimeo 수집 상태
+let lectureToolSettings = {
+  projectPath: '.\\lecture-slide-notes',
+  videosDir: '.\\videos',
+  outputRoot: '.\\repo\\slidenote_video_exports',
+};
 
 if (typeof pdfjsLib !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL('pdf.worker.min.js');
@@ -55,6 +60,7 @@ document.querySelectorAll('.tab').forEach(btn => {
 // 초기화
 // ========================
 async function init() {
+  await loadLectureToolSettings();
   const settings = await chrome.storage.sync.get({ subfolder: 'teams-captions' });
   updateSavePathDisplay(settings.subfolder);
 
@@ -80,6 +86,19 @@ async function init() {
   }
 
   loadAiSettings();
+}
+
+async function loadLectureToolSettings() {
+  const settings = await chrome.storage.sync.get({
+    lectureSlideNotesProjectPath: lectureToolSettings.projectPath,
+    lectureSlideNotesVideosDir: lectureToolSettings.videosDir,
+    lectureSlideNotesOutputRoot: lectureToolSettings.outputRoot,
+  });
+  lectureToolSettings = {
+    projectPath: settings.lectureSlideNotesProjectPath || lectureToolSettings.projectPath,
+    videosDir: settings.lectureSlideNotesVideosDir || lectureToolSettings.videosDir,
+    outputRoot: settings.lectureSlideNotesOutputRoot || lectureToolSettings.outputRoot,
+  };
 }
 
 // ========================
@@ -228,6 +247,12 @@ function getVimeoHlsUrl(status = currentVimeoStatus) {
   return status?.hlsUrl || null;
 }
 
+function getVimeoDownloadUrl(status = currentVimeoStatus, hlsFallback = null) {
+  const sourceUrl = status?.sourceUrl || '';
+  if (/player\.vimeo\.com\/video\//i.test(sourceUrl)) return sourceUrl;
+  return status?.hlsUrl || hlsFallback || null;
+}
+
 function shortenHlsUrl(url) {
   if (!url) return '';
   try {
@@ -243,22 +268,26 @@ function renderVimeoHlsTool(status) {
   const preview = document.getElementById('vimeoHlsPreview');
   const copyBtn = document.getElementById('vimeoCopyHlsBtn');
   const commandBtn = document.getElementById('vimeoCopyYtDlpBtn');
+  const pdfBtn = document.getElementById('vimeoCopyPdfCommandBtn');
+  const combinedBtn = document.getElementById('vimeoCopyDownloadPdfCommandBtn');
   if (!preview || !copyBtn || !commandBtn) return;
 
   const hlsUrl = getVimeoHlsUrl(status);
+  const canDownload = Boolean(getVimeoDownloadUrl(status, hlsUrl));
   if (hlsUrl) {
     preview.textContent = shortenHlsUrl(hlsUrl);
     preview.title = hlsUrl;
     preview.classList.remove('placeholder');
     copyBtn.disabled = false;
-    commandBtn.disabled = false;
   } else {
     preview.textContent = '재생하면 m3u8 또는 manifest 주소를 자동 탐색합니다';
     preview.title = '';
     preview.classList.add('placeholder');
     copyBtn.disabled = true;
-    commandBtn.disabled = true;
   }
+  commandBtn.disabled = !canDownload;
+  if (pdfBtn) pdfBtn.disabled = !canDownload;
+  if (combinedBtn) combinedBtn.disabled = !canDownload;
 }
 
 function setVimeoFeedback(message, isError = false) {
@@ -268,18 +297,72 @@ function setVimeoFeedback(message, isError = false) {
   fb.className = 'feedback' + (isError ? ' error' : '');
 }
 
-function escapeCommandArg(value) {
-  return String(value || '').replace(/"/g, '\\"');
+function quotePowerShell(value) {
+  return `'${String(value || '').replace(/'/g, "''")}'`;
 }
 
-function buildYtDlpCommand(hlsUrl) {
-  const sourceUrl = currentVimeoStatus?.sourceUrl || '';
-  const referer = currentVimeoStatus?.pageUrl || '';
-  const downloadUrl = /player\.vimeo\.com\/video\//i.test(sourceUrl) ? sourceUrl : hlsUrl;
+function getVimeoCommandStem() {
   const title = currentVimeoStatus?.title || currentVimeoStatus?.videoTitle || 'vimeo';
-  const safe = sanitizeFilenameSimple(title);
-  const refererArg = referer ? ` --referer "${escapeCommandArg(referer)}"` : '';
-  return `yt-dlp "${escapeCommandArg(downloadUrl)}"${refererArg} -o "videos/${safe}.%(ext)s"`;
+  return sanitizeFilenameSimple(title);
+}
+
+function buildYtDlpCommand(hlsUrl = null) {
+  const referer = currentVimeoStatus?.pageUrl || '';
+  const downloadUrl = getVimeoDownloadUrl(currentVimeoStatus, hlsUrl);
+  if (!downloadUrl) throw new Error('영상 다운로드 URL이 아직 감지되지 않았습니다. 영상을 재생한 뒤 다시 시도하세요.');
+  const safe = getVimeoCommandStem();
+  const refererArg = referer ? ` --referer ${quotePowerShell(referer)}` : '';
+  return `uv run --project ${quotePowerShell(lectureToolSettings.projectPath)} python -m yt_dlp ${quotePowerShell(downloadUrl)}${refererArg} -o ${quotePowerShell(`${lectureToolSettings.videosDir}\\${safe}.%(ext)s`)}`;
+}
+
+function buildSlidePdfCommand() {
+  const safe = getVimeoCommandStem();
+  const extensions = ['.mp4', '.mkv', '.webm', '.mov'].map(quotePowerShell).join(', ');
+  const findVideo = `$video = Get-ChildItem -Path ${quotePowerShell(lectureToolSettings.videosDir)} -Filter ${quotePowerShell(`${safe}.*`)} | Where-Object { $_.Extension -in ${extensions} } | Sort-Object LastWriteTime -Descending | Select-Object -First 1`;
+  const requireVideo = `if (-not $video) { throw ${quotePowerShell(`다운로드된 영상 파일을 찾지 못했습니다: ${safe}`)} }`;
+  const convert = [
+    'uv run --project',
+    quotePowerShell(lectureToolSettings.projectPath),
+    'lecture-slide-notes process-video',
+    '$video.FullName',
+    '--output',
+    quotePowerShell(`${lectureToolSettings.outputRoot}\\${safe}`),
+    '--sample-rate 2',
+    '--min-gap 8',
+    '--threshold 22',
+    '--pdf-width 0',
+    '--stable-seconds 2',
+    '--stability-threshold 10',
+    '--dedupe-threshold 18',
+    '--ocr-layer-mode hidden',
+  ].join(' ');
+  return `${findVideo}; ${requireVideo}; ${convert}`;
+}
+
+function buildDownloadAndPdfCommand(hlsUrl = null) {
+  const referer = currentVimeoStatus?.pageUrl || '';
+  const downloadUrl = getVimeoDownloadUrl(currentVimeoStatus, hlsUrl);
+  if (!downloadUrl) throw new Error('영상 다운로드 URL이 아직 감지되지 않았습니다. 영상을 재생한 뒤 다시 시도하세요.');
+  const refererArg = referer ? ` --referer ${quotePowerShell(referer)}` : '';
+  return [
+    'uv run --project',
+    quotePowerShell(lectureToolSettings.projectPath),
+    'lecture-slide-notes process-url',
+    quotePowerShell(downloadUrl),
+    '--output-root',
+    quotePowerShell(lectureToolSettings.outputRoot),
+    refererArg,
+    '--title',
+    quotePowerShell(currentVimeoStatus?.title || currentVimeoStatus?.videoTitle || 'vimeo'),
+    '--sample-rate 2',
+    '--min-gap 8',
+    '--threshold 22',
+    '--pdf-width 0',
+    '--stable-seconds 2',
+    '--stability-threshold 10',
+    '--dedupe-threshold 18',
+    '--ocr-layer-mode hidden',
+  ].filter(Boolean).join(' ');
 }
 
 async function copyTextToClipboard(text) {
@@ -442,10 +525,35 @@ document.getElementById('vimeoCopyHlsBtn')?.addEventListener('click', async () =
 
 document.getElementById('vimeoCopyYtDlpBtn')?.addEventListener('click', async () => {
   try {
+    await loadLectureToolSettings();
     const hlsUrl = getVimeoHlsUrl() || await refreshVimeoHlsUrl();
-    if (!hlsUrl) throw new Error('영상 manifest URL이 아직 감지되지 않았습니다. 영상을 재생한 뒤 다시 시도하세요.');
     await copyTextToClipboard(buildYtDlpCommand(hlsUrl));
-    setVimeoFeedback('✅ yt-dlp 명령 복사됨');
+    setVimeoFeedback('✅ 영상 다운로드 명령 복사됨');
+  } catch (e) {
+    setVimeoFeedback('❌ ' + e.message, true);
+  } finally {
+    setTimeout(() => { if (document.getElementById('vimeoFeedback')?.textContent.includes('복사')) setVimeoFeedback(''); }, 3000);
+  }
+});
+
+document.getElementById('vimeoCopyPdfCommandBtn')?.addEventListener('click', async () => {
+  try {
+    await loadLectureToolSettings();
+    await copyTextToClipboard(buildSlidePdfCommand());
+    setVimeoFeedback('✅ PDF 생성 명령 복사됨');
+  } catch (e) {
+    setVimeoFeedback('❌ ' + e.message, true);
+  } finally {
+    setTimeout(() => { if (document.getElementById('vimeoFeedback')?.textContent.includes('복사')) setVimeoFeedback(''); }, 3000);
+  }
+});
+
+document.getElementById('vimeoCopyDownloadPdfCommandBtn')?.addEventListener('click', async () => {
+  try {
+    await loadLectureToolSettings();
+    const hlsUrl = getVimeoHlsUrl() || await refreshVimeoHlsUrl();
+    await copyTextToClipboard(buildDownloadAndPdfCommand(hlsUrl));
+    setVimeoFeedback('✅ 다운로드+PDF 명령 복사됨');
   } catch (e) {
     setVimeoFeedback('❌ ' + e.message, true);
   } finally {

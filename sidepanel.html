@@ -437,8 +437,12 @@
           <button class="btn btn-secondary" id="vimeoRefreshHlsBtn">다시 확인</button>
           <button class="btn btn-secondary" id="vimeoCopyHlsBtn" disabled>URL 복사</button>
         </div>
-        <button class="btn btn-accent btn-full" id="vimeoCopyYtDlpBtn" disabled>yt-dlp 명령 복사</button>
-        <div class="vimeo-status-hint">복사한 명령은 로컬 터미널에서 실행합니다</div>
+        <button class="btn btn-accent btn-full" id="vimeoCopyYtDlpBtn" disabled>영상 다운로드 명령 복사</button>
+        <div class="btn-row hls-tool-actions">
+          <button class="btn btn-secondary" id="vimeoCopyPdfCommandBtn" disabled>PDF 생성 명령</button>
+          <button class="btn btn-green" id="vimeoCopyDownloadPdfCommandBtn" disabled>다운로드+PDF</button>
+        </div>
+        <div class="vimeo-status-hint">복사한 PowerShell 명령은 로컬 터미널에서 실행합니다</div>
       </div>
 
       <div class="vimeo-status-block" id="vimeoWaiting">

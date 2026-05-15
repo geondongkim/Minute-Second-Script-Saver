@@ -12,6 +12,7 @@ Microsoft Teams 라이브 캡션과 Vimeo 강의 자막을 캡처, 저장하고 
 - 참석자 목록 추적
 - Vimeo 강의 자막 자동 수집, 수집 중단, 재수집
 - Vimeo 자막 수동 TXT 다운로드와 뷰어 열기
+- `Minute-Second-Lecture-Slide-Notes` CLI와 호환되는 영상 다운로드/PDF 생성 명령 복사
 - Chrome Side Panel 지원
 - Gemini/OpenAI 기반 AI 회의록 생성
 - 팝업, 사이드 패널, 뷰어에서 참고 파일 MD, TXT, PDF, CSV 첨부 후 요약에 반영
@@ -46,6 +47,16 @@ Microsoft Teams 라이브 캡션과 Vimeo 강의 자막을 캡처, 저장하고 
 2. 확장 팝업 또는 사이드 패널에서 Vimeo 수집 상태를 확인합니다.
 3. 수집 중 자막이 부족해 보이면 "수집 중단"을 누른 뒤 "재수집"으로 다시 시도합니다.
 4. 수집 완료 후 "뷰어"로 원문/AI 요약을 확인하거나 "TXT"로 직접 다운로드합니다.
+
+### 슬라이드 PDF/Markdown 생성 명령
+
+Vimeo/HLS URL이 감지되면 확장에서 로컬 PowerShell 명령을 복사할 수 있습니다. 이 명령은 `lecture-slide-notes` CLI 계약만 사용하므로, 확장 리포지토리와 슬라이드 노트 리포지토리가 분리되어도 경로 설정만 맞추면 계속 호환됩니다.
+
+| `chrome.storage.sync` key | 기본값 | 설명 |
+|---|---|---|
+| `lectureSlideNotesProjectPath` | `.\lecture-slide-notes` | `Minute-Second-Lecture-Slide-Notes` checkout 경로 |
+| `lectureSlideNotesVideosDir` | `.\videos` | yt-dlp 다운로드 영상 저장 경로 |
+| `lectureSlideNotesOutputRoot` | `.\repo\slidenote_video_exports` | PDF/Markdown 출력 루트 |
 
 ## AI 요약
 
