@@ -145,6 +145,4 @@ node --check viewer.js
 
 ## 참고 문서
 
-- `../docs/script-saver.md`
-- `../docs/development-guide.md`
-- `../docs/architecture.md`
+- `docs/extension-design.md`
