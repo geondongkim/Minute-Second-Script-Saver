@@ -24,6 +24,11 @@ function updateBadge(capturing) {
   }
 }
 
+function getSenderTabUrl(sender) {
+  const url = sender?.tab?.url;
+  return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : null;
+}
+
 chrome.runtime.onInstalled.addListener(() => updateBadge(false));
 chrome.runtime.onStartup.addListener(() => updateBadge(false));
 
@@ -119,7 +124,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             lessonTitle,
             tabId,
             sourceUrl:  msg.sourceUrl,
-            pageUrl:    msg.pageUrl || prev?.pageUrl || sender.tab.url || null,
+            pageUrl:    getSenderTabUrl(sender) || msg.pageUrl || prev?.pageUrl || null,
             startedAt:  msg.startedAt ?? Date.now(),
             collectionId: msg.collectionId ?? null,
           }
@@ -132,8 +137,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // ── Vimeo HLS(m3u8) URL 발견 ──
     if (msg.type === 'VIMEO_HLS_FOUND') {
       const tabId = sender.tab?.id;
-      const status = await recordVimeoHlsUrl(tabId, msg.hlsUrl, msg.source || 'contentScript', msg);
+      const status = await recordVimeoHlsUrl(tabId, msg.hlsUrl, msg.source || 'contentScript', {
+        ...msg,
+        pageUrl: getSenderTabUrl(sender) || msg.pageUrl,
+      });
       sendResponse({ ok: Boolean(status), status });
+      return;
+    }
+
+    // -- Vimeo track fallback: TextTrack cues가 로드되지 않을 때 VTT 직접 파싱 --
+    if (msg.type === 'VIMEO_TRACK_FALLBACK_REQUEST') {
+      try {
+        const cues = await fetchVimeoTrackCues(msg.trackUrl);
+        await handleVimeoBatch({ ...msg, pageUrl: getSenderTabUrl(sender) || msg.pageUrl, cues }, sender);
+        sendResponse({ ok: true, cueCount: cues.length });
+      } catch (e) {
+        console.error('[MinuteSecondScriptSaver] Vimeo VTT fallback 실패:', e);
+        sendResponse({ ok: false, error: e.message });
+      }
       return;
     }
 
@@ -440,6 +461,80 @@ function sanitizeFilename(str) {
     .substring(0, 50) || DEFAULT_DOWNLOAD_SUBFOLDER;
 }
 
+async function fetchVimeoTrackCues(trackUrl) {
+  if (!trackUrl || !/^https:\/\/[^/]*vimeo\.com\//i.test(trackUrl)) {
+    throw new Error('지원하지 않는 Vimeo track URL입니다.');
+  }
+
+  const response = await fetch(trackUrl, { credentials: 'include' });
+  if (!response.ok) {
+    throw new Error(`Vimeo track HTTP ${response.status}`);
+  }
+
+  const text = await response.text();
+  const cues = parseWebVttCues(text);
+  if (!cues.length) {
+    throw new Error('Vimeo track에서 자막 cue를 찾지 못했습니다.');
+  }
+  return cues;
+}
+
+function parseWebVttCues(text) {
+  return String(text || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split(/\n{2,}/)
+    .flatMap(parseWebVttBlock);
+}
+
+function parseWebVttBlock(block) {
+  const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
+  if (!lines.length || /^(WEBVTT|NOTE|STYLE|REGION)(\s|$)/i.test(lines[0])) return [];
+
+  const timingIndex = lines.findIndex(line => line.includes('-->'));
+  if (timingIndex < 0) return [];
+
+  const timing = lines[timingIndex];
+  const [startRaw, endAndSettings] = timing.split(/\s+-->\s+/);
+  const endRaw = endAndSettings?.split(/\s+/)[0];
+  const start = parseVttTimestamp(startRaw);
+  const end = parseVttTimestamp(endRaw);
+  if (start == null || end == null) return [];
+
+  const text = lines.slice(timingIndex + 1)
+    .join(' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return [];
+
+  const cueId = timingIndex > 0 ? lines.slice(0, timingIndex).join(' ') : `${start}-${end}-${text.slice(0, 24)}`;
+  return [{ id: cueId, start, end, text: decodeVttEntities(text) }];
+}
+
+function parseVttTimestamp(value) {
+  if (!value) return null;
+  const normalized = value.replace(',', '.').trim();
+  const parts = normalized.split(':');
+  if (parts.length < 2 || parts.length > 3) return null;
+
+  const seconds = Number(parts.pop());
+  const minutes = Number(parts.pop());
+  const hours = parts.length ? Number(parts.pop()) : 0;
+  if (![hours, minutes, seconds].every(Number.isFinite)) return null;
+  return +(hours * 3600 + minutes * 60 + seconds).toFixed(3);
+}
+
+function decodeVttEntities(text) {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 // ========================
 // Vimeo 배치 수집 처리
 // ========================
@@ -483,7 +578,7 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
         duration,
         sessionId,
         sourceUrl,
-        pageUrl: currentStatus?.pageUrl || pageUrl || sender?.tab?.url || null,
+        pageUrl: getSenderTabUrl(sender) || currentStatus?.pageUrl || pageUrl || null,
         date:        new Date(collectedAt || Date.now()).toLocaleDateString('ko-KR'),
         collectedAt: collectedAt || Date.now(),
         collectionId: collectionId ?? null,
@@ -500,7 +595,7 @@ async function handleVimeoBatch({ sourceUrl, pageUrl, videoTitle, trackLabel, tr
     videoTitle,
     lessonTitle,
     sourceUrl,
-    pageUrl:     pageUrl || sourceUrl,
+    pageUrl:     getSenderTabUrl(sender) || pageUrl || sourceUrl,
     trackLabel,
     trackLang,
     hlsUrl:      currentStatus?.hlsUrl || null,

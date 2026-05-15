@@ -140,6 +140,8 @@ node --check viewer.js
 - 발화자 별칭 설정이 캡처 중 자막 이름에 적용됩니다.
 - 팝업과 사이드 패널의 강의 수집 UI/AI 요약 기능을 동일하게 맞췄습니다.
 - 뷰어 히스토리에서 Teams 회의 세션과 강의 세션을 함께 열 수 있습니다.
+- Vimeo TextTrack cue 로딩이 막히는 경우 service worker가 VTT track URL을 직접 가져와 파싱하는 fallback을 사용합니다.
+- iframe referrer가 origin으로 축약되어도 service worker는 실제 lesson tab URL을 우선 저장해 slide-notes `--referer`가 정확하게 생성됩니다.
 
 ## 참고 문서
 

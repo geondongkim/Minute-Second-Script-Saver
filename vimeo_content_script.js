@@ -68,6 +68,43 @@ function safeMessage(payload) {
   try { chrome.runtime.sendMessage(payload); } catch { /* extension context 없음 */ }
 }
 
+function findTrackElement() {
+  const tracks = [...document.querySelectorAll('track[src]')];
+  if (!tracks.length) return null;
+  if (!activeTrack) return tracks[0];
+  return tracks.find(track => (
+    (track.srclang && track.srclang === activeTrack.language) ||
+    (track.label && track.label === activeTrack.label)
+  )) || tracks[0];
+}
+
+function requestTrackFallback() {
+  if (collectionStopped || batchSent) return;
+  const trackEl = findTrackElement();
+  if (!trackEl?.src) return;
+
+  try {
+    chrome.runtime.sendMessage({
+      type:        'VIMEO_TRACK_FALLBACK_REQUEST',
+      sourceUrl:   location.href,
+      pageUrl:     document.referrer || location.href,
+      videoTitle,
+      trackUrl:    trackEl.src,
+      trackLabel:  activeTrack?.label || trackEl.label || null,
+      trackLang:   activeTrack?.language || trackEl.srclang || null,
+      collectedAt: Date.now(),
+      collectionId,
+    }, response => {
+      if (chrome.runtime.lastError) return;
+      if (response?.ok && response.cueCount > 0) {
+        batchSent = true;
+        cleanupCueLoadWaiter();
+        console.log(`[VimeoCaptionSaver] VTT fallback 수집 완료: ${response.cueCount}개 큐`);
+      }
+    });
+  } catch { /* extension context 없음 */ }
+}
+
 function makeCollectionId() {
   return `vimeo_collection_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -288,6 +325,8 @@ function init() {
       if (!batchSent && activeTrack.cues?.length > 0) {
         cleanupCueLoadWaiter();
         sendBatch();
+      } else if (!batchSent) {
+        requestTrackFallback();
       }
     }, 500);
   }
